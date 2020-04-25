@@ -5,25 +5,55 @@ import "net"
 import "os"
 import "net/rpc"
 import "net/http"
+import "sync"
 
+type TaskState struct {
+	file string
+	state string
+	workerId int
+}
 
 type Master struct {
 	// Your definitions here.
-
+	mapTasks, reduceTasks []TaskState
+	m sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (m *Master) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+func (m *Master) register(arg *TODO, reply *int) {
+	m.Lock()
+	reply = m.lastWorkerId + 1
+	m.lastWorkerId++
+	m.workersState[reply] = WorkerState{}
+	m.UnLock()
 	return nil
 }
+	
 
+func (m *Master) dispatchJob(arg *int, job *JobReply) {
+	m.Lock()
+	if !m.mapDone() {
+		kind = 'map'
+		job.kind = kind
+		job.reduceNum = m.reduceNum
+	} else {
+		kind = 'reduce'
+		job.kind = kind
+		job.mapIds = m.mapIds
+	}
+	job.TaskId = <-m.tasksCh[kind]
+	m.UnLock()
+	go func(taskId int) {
+		time.Sleep(10*1000)
+		m.Lock()
+		if m.tasks[kind][TaskId].state != 'finish' {
+			tasksCh[kind] <- TaskId
+		}
+		m.UnLock()
+	}(job.taskId)
+	return nil
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -46,7 +76,7 @@ func (m *Master) server() {
 // if the entire job has finished.
 //
 func (m *Master) Done() bool {
-	ret := false
+	ret := true
 
 	// Your code here.
 
@@ -60,11 +90,12 @@ func (m *Master) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeMaster(files []string, nReduce int) *Master {
-	m := Master{}
+	m := Master{
+
+	}
 
 	// Your code here.
+		m.server()
 
-
-	m.server()
 	return &m
 }
