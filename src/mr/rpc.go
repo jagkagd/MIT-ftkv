@@ -14,12 +14,15 @@ import "strconv"
 // and reply for an RPC.
 //
 
-type ExampleArgs struct {
-	X int
+type ConfigReply struct {
+	MapFiles []string
+	NReduce int
+	WorkerId int
 }
 
-type ExampleReply struct {
-	Y int
+type JobReply struct {
+	Kind string
+	TaskId int
 }
 
 // Add your RPC definitions here.

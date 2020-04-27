@@ -1,10 +1,16 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-import "sort"
+import (
+	"encoding/json"
+	"sync"
+	"io/ioutil"
+	"os"
+	"fmt"
+	"log"
+	"net/rpc"
+	"hash/fnv"
+	"sort"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -15,7 +21,7 @@ type KeyValue struct {
 }
 
 // for sorting by key.
-type ByKey []mr.KeyValue
+type ByKey []KeyValue
 
 // for sorting by key.
 func (a ByKey) Len() int           { return len(a) }
@@ -39,34 +45,33 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	// Your worker implementation here.
-	var id int
-	if ok := call("Master.register", &arg, &id); !ok {
-		log('Registration fail.')
-		return
-	}
+	log.Printf("Worker start.")
+	var config ConfigReply
+	arg := 1
+	call("Master.Register", &arg, &config)
+	id := config.WorkerId
 	for {
-		var job jobReply
-		if ok := call("Master.getJob", &id, &job); !ok {
-			continue
-		}
-		switch job.kind {
-		case 'map':
-			doMap(mapf, job)
-			var reply id
-			call("Master.mapFinished", &id, &reply)
-		case 'reduce':
-			doReduce(reducef, job)
-			var reply id
-			call("Master.reduceFinished", &id, &reply)
+		var job JobReply
+		log.Printf("Worker No. %v ask for a job", id)
+		call("Master.DispatchJob", &id, &job)
+		var reply int
+		switch job.Kind {
+		case "map":
+			doMap(mapf, job, config)
+			call("Master.WorkerFinished", &id, &reply)
+		case "reduce":
+			doReduce(reducef, job, config)
+			call("Master.WorkerFinished", &id, &reply)
 		}
 	}
 }
 
-func domap(mapf func(string, string) []KeyValue, job jobReply) {
-	intermediate := make([][]mr.KeyValue, job.reduceNum)
-	for inter := range intermediate {
-		inter = []mr.KeyValue{}
+func doMap(mapf func(string, string) []KeyValue, job JobReply, config ConfigReply) {
+	intermediate := make([][]KeyValue, config.NReduce)
+	for i := range intermediate {
+		intermediate[i] = make([]KeyValue, 0)
 	}
+	filename := config.MapFiles[job.TaskId]
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -76,36 +81,90 @@ func domap(mapf func(string, string) []KeyValue, job jobReply) {
 		log.Fatalf("cannot read %v", filename)
 	}
 	file.Close()
-	for key, value := range mapf(filename, string(content)) {
-		reduceNo = ihash(key)
-		intermediate[reduceNo] = append(intermediate[reduceNo], map[string]string{key: value})
+	for _, kv := range mapf(filename, string(content)) {
+		reduceNo := ihash(kv.Key) % config.NReduce
+		intermediate[reduceNo] = append(intermediate[reduceNo], kv)
 	}
 	var done sync.WaitGroup
-	for inter := range intermediate {
+	for ii := 0; ii < len(intermediate); ii++ {
 		done.Add(1)
-		go func(u &[]KeyValue) {
+		go func(i int) {
 			defer done.Done()
-			sort.Sort(ByKey(u))
+			sort.Sort(ByKey(intermediate[i]))
 
-			file, err := ioutil.TempFile("mr-tmp", fmt.Sprintf("mr-%v-%v-tmp", id, job.reduceNum))
+			tmpFile := fmt.Sprintf("mr-%v-%v-tmp", job.TaskId, i)
+			// log.Printf("map write mr-%v-%v", job.TaskId, i)
+			lock := sync.Mutex{}
+			lock.Lock()
+			defer lock.Unlock()
+			file, err := ioutil.TempFile(".", tmpFile)
 			if err != nil {
 				log.Fatal(err)
 			}
 			enc := json.NewEncoder(file)
-			err := enc.Encode(u)
+			err = enc.Encode(intermediate[i])
 			if err != nil {
 				log.Fatal(err)
 			}
-			file.Close()
-			if err := tmpfile.Close(); err != nil {
+			if err = file.Close(); err != nil {
 				log.Fatal(err)
 			}
-			os.Rename()
-		}(&inter)
+			os.Rename(file.Name(), fmt.Sprintf("./mr-%v-%v", job.TaskId, i))
+		}(ii)
 	}
 	done.Wait()
 }
 
+func doReduce(reducef func(string, []string) string, job JobReply, config ConfigReply) {
+	kva := make([]KeyValue, 0)
+	for mapId := 0; mapId < len(config.MapFiles); mapId++ {
+		filename := fmt.Sprintf("./mr-%v-%v", mapId, job.TaskId)
+		// log.Printf("reduce open %v", filename)
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		dec := json.NewDecoder(file)
+		var kvs []KeyValue
+		if err := dec.Decode(&kvs); err != nil {
+			log.Fatalf("cannot load %v", filename)
+			break
+		}
+		kva = append(kva, kvs...)
+	}
+	sort.Sort(ByKey(kva))
+
+	oname := fmt.Sprintf("./mr-out-%v", job.TaskId)
+	ofile, _ := os.Create(oname)
+	lock := sync.Mutex{}
+
+	var done sync.WaitGroup
+	i := 0
+	for i < len(kva) {
+		j := i + 1
+		for j < len(kva) && kva[j].Key == kva[i].Key {
+			j++
+		}
+		done.Add(1)
+		go func(i, j int) {
+			defer done.Done()
+			values := []string{}
+			for k := i; k < j; k++ {
+				values = append(values, kva[k].Value)
+			}
+			output := reducef(kva[i].Key, values)
+
+			lock.Lock()
+			fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
+			defer lock.Unlock()
+		}(i, j)
+
+		i = j
+	}
+	done.Wait()
+	log.Printf("Reduce %v write done.", oname)
+	ofile.Close()
+}
 //
 // send an RPC request to the master, wait for the response.
 // usually returns true.

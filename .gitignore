@@ -1,3 +1,9 @@
 pkg/
 api.key
 *-handin.tar.gz
+src/main/mr-tmp/
+*.so
+src/main/mrsequential
+src/main/mrmaster
+src/main/mrworker
+src/main/mr-out*
