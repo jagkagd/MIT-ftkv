@@ -41,8 +41,8 @@ sleep 1
 
 # start multiple workers.
 timeout -k 2s 180s ../mrworker ../../mrapps/wc.so &
-timeout -k 2s 180s ../mrworker ../../mrapps/wc.so &
-timeout -k 2s 180s ../mrworker ../../mrapps/wc.so &
+# timeout -k 2s 180s ../mrworker ../../mrapps/wc.so &
+# timeout -k 2s 180s ../mrworker ../../mrapps/wc.so &
 
 # wait for one of the processes to exit.
 # under bash, this waits for all processes,
