@@ -46,6 +46,14 @@ type ApplyMsg struct {
 //
 // A Go object implementing a single Raft peer.
 //
+
+type ServerState int
+const (
+	follower ServerState = iota
+	candidate
+	leader
+)
+
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
@@ -56,7 +64,16 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
+	state ServerState
+	currentTerm int
+	votedFor int
+	log []Interface{}
+	
+	commitIndex int
+	lastApplied int
 
+	nextIndex []int
+	matchIndex []int
 }
 
 // return currentTerm and whether this server
@@ -66,6 +83,8 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
+	term = rf.currentTerm
+	isleader = rf.state == leader
 	return term, isleader
 }
 
@@ -117,6 +136,10 @@ func (rf *Raft) readPersist(data []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
+	term int
+	candidatedId int
+	lastLogIndex int
+	lastLogTerm int
 }
 
 //
@@ -125,6 +148,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
+	term int
+	voteGranted bool
 }
 
 //
@@ -132,6 +157,27 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	rf.Lock()
+	if rf.currentTerm < args.term {
+		reply.term = rf.currentTerm
+		reply.voteGranted = false
+		rf.Unlock()
+		return
+	}
+	if (rf.currentTerm < args.term) {
+		rf.currentTerm = args.term
+		rf.state = follower
+	}
+	if (rf.votedFor == -1 || rf.votedFor == args.candidatedId) && len(rf.log) <= args.lastLogIndex {
+		rf.Unlock()
+		reply.term = args.term
+		reply.voteGranted = true
+		return
+	}
+	rf.Unlock()
+	reply.term = args.term
+	reply.voteGranted = false
+	return
 }
 
 //
