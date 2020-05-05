@@ -17,9 +17,13 @@ package raft
 //   in the same server.
 //
 
-import "sync"
-import "sync/atomic"
-import "../labrpc"
+import (
+	"math/rand"
+	"time"
+	"sync"
+	"sync/atomic"
+	"../labrpc"
+)
 
 // import "bytes"
 // import "../labgob"
@@ -43,11 +47,17 @@ type ApplyMsg struct {
 	CommandIndex int
 }
 
+type LogEntry struct {
+	Term int
+	Index int
+	Command interface{}
+}
 //
 // A Go object implementing a single Raft peer.
 //
 
 type ServerState int
+
 const (
 	follower ServerState = iota
 	candidate
@@ -67,13 +77,17 @@ type Raft struct {
 	state ServerState
 	currentTerm int
 	votedFor int
-	log []Interface{}
+	log []LogEntry
 	
 	commitIndex int
 	lastApplied int
 
 	nextIndex []int
 	matchIndex []int
+
+	ifElection bool
+	stopListenHB bool
+	electionTimeRange []int
 }
 
 // return currentTerm and whether this server
@@ -157,24 +171,24 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	rf.Lock()
-	if rf.currentTerm < args.term {
+	rf.mu.Lock()
+	if args.term < rf.currentTerm {
 		reply.term = rf.currentTerm
 		reply.voteGranted = false
-		rf.Unlock()
+		rf.mu.Unlock()
 		return
 	}
-	if (rf.currentTerm < args.term) {
+	if rf.currentTerm < args.term {
 		rf.currentTerm = args.term
 		rf.state = follower
 	}
-	if (rf.votedFor == -1 || rf.votedFor == args.candidatedId) && len(rf.log) <= args.lastLogIndex {
-		rf.Unlock()
+	if (rf.votedFor == -1 || rf.votedFor == args.candidatedId) && rf.getLastLogIndex() <= args.lastLogIndex {
+		rf.mu.Unlock()
 		reply.term = args.term
 		reply.voteGranted = true
 		return
 	}
-	rf.Unlock()
+	rf.mu.Unlock()
 	reply.term = args.term
 	reply.voteGranted = false
 	return
@@ -280,10 +294,60 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.electionCh = make(chan bool, 1)
+	rf.electionTimeRange = []int{150, 300}
+	rf.ifElection = true
+	rf.stopListenHB = false
+	go rf.checkHeartBeats()
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
 
 	return rf
+}
+
+// heartbeats: 100 ms
+// election time elapse: 300~500 ms
+func (rf *Raft) checkHeartBeats() {
+	for {
+		electionTime := time.Millisecond*(time.Duration)(rf.electionTimeRange[0]+rand.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
+		time.Sleep(electionTime)
+		if rf.stopListenHB {
+			return
+		}
+		if rf.ifElection {
+			rf.startElection()
+			rf.ifElection = false
+		} else {
+			rf.ifElection = true
+		}
+	}
+}
+
+func (rf *Raft) startElection() {
+	rf.mu.Lock()
+	rf.state = candidate
+	rf.currentTerm++
+	rf.votedFor = rf.me
+	args := RequestVoteArgs{
+		term: rf.currentTerm,
+		candidatedId: rf.me,
+		lastLogIndex: rf.getLastLogIndex(),
+		lastLogTerm: rf.currentTerm-1,
+	}
+	rf.mu.Unlock()
+	for index := range rf.peers {
+		reply := RequestVoteReply{}
+		go func() {
+			rf.sendRequestVote(index, &args, &reply)
+			if reply.voteGranted {
+
+			}
+	}
+	rf.stopListenHB = true
+}
+
+func (rf *Raft) getLastLogIndex() int {
+	return len(rf.log) - 1
 }
