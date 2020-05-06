@@ -18,7 +18,7 @@ package raft
 //
 
 import (
-	"math/rand"
+	"log"
 	"time"
 	"sync"
 	"sync/atomic"
@@ -74,6 +74,7 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
+	killedCh chan int
 	state ServerState
 	currentTerm int
 	votedFor int
@@ -81,13 +82,20 @@ type Raft struct {
 	
 	commitIndex int
 	lastApplied int
+	applyCh chan ApplyMsg
 
 	nextIndex []int
 	matchIndex []int
+	updateFollowerLogCh [](chan int)
 
-	ifElection bool
-	stopListenHB bool
 	electionTimeRange []int
+	heartBeatTime int
+
+	changeRoleCh chan ServerState
+	changeTermCh chan int
+	heartBeatsCh chan int
+	checkAppliedCh chan int
+	stopChs map[string](chan int)
 }
 
 // return currentTerm and whether this server
@@ -148,85 +156,6 @@ func (rf *Raft) readPersist(data []byte) {
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
-type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
-	term int
-	candidatedId int
-	lastLogIndex int
-	lastLogTerm int
-}
-
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
-type RequestVoteReply struct {
-	// Your data here (2A).
-	term int
-	voteGranted bool
-}
-
-//
-// example RequestVote RPC handler.
-//
-func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
-	rf.mu.Lock()
-	if args.term < rf.currentTerm {
-		reply.term = rf.currentTerm
-		reply.voteGranted = false
-		rf.mu.Unlock()
-		return
-	}
-	if rf.currentTerm < args.term {
-		rf.currentTerm = args.term
-		rf.state = follower
-	}
-	if (rf.votedFor == -1 || rf.votedFor == args.candidatedId) && rf.getLastLogIndex() <= args.lastLogIndex {
-		rf.mu.Unlock()
-		reply.term = args.term
-		reply.voteGranted = true
-		return
-	}
-	rf.mu.Unlock()
-	reply.term = args.term
-	reply.voteGranted = false
-	return
-}
-
-//
-// example code to send a RequestVote RPC to a server.
-// server is the index of the target server in rf.peers[].
-// expects RPC arguments in args.
-// fills in *reply with RPC reply, so caller should
-// pass &reply.
-// the types of the args and reply passed to Call() must be
-// the same as the types of the arguments declared in the
-// handler function (including whether they are pointers).
-//
-// The labrpc package simulates a lossy network, in which servers
-// may be unreachable, and in which requests and replies may be lost.
-// Call() sends a request and waits for a reply. If a reply arrives
-// within a timeout interval, Call() returns true; otherwise
-// Call() returns false. Thus Call() may not return for a while.
-// A false return can be caused by a dead server, a live server that
-// can't be reached, a lost request, or a lost reply.
-//
-// Call() is guaranteed to return (perhaps after a delay) *except* if the
-// handler function on the server side does not return.  Thus there
-// is no need to implement your own timeouts around Call().
-//
-// look at the comments in ../labrpc/labrpc.go for more details.
-//
-// if you're having trouble getting RPC to work, check that you've
-// capitalized all field names in structs passed over RPC, and
-// that the caller passes the address of the reply struct with &, not
-// the struct itself.
-//
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-	return ok
-}
 
 
 //
@@ -268,6 +197,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	rf.killedCh <- 1
 }
 
 func (rf *Raft) killed() bool {
@@ -292,62 +222,104 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	log.Println("Make a raft server.")
 
 	// Your initialization code here (2A, 2B, 2C).
-	rf.electionCh = make(chan bool, 1)
 	rf.electionTimeRange = []int{150, 300}
-	rf.ifElection = true
-	rf.stopListenHB = false
-	go rf.checkHeartBeats()
+	rf.stopChs = map[string](chan int){
+		"checkHB": make(chan int),
+		"election": make(chan int),
+		"sendHB": make(chan int),
+		"updateFollowers" : make(chan int),
+	}
+	rf.changeRoleCh = make(chan ServerState)
+	rf.changeTermCh = make(chan int)
+	rf.heartBeatsCh = make(chan int)
+	rf.killedCh = make(chan int)
+	rf.changeRoleCh <- follower
+	go rf.changeRole()
+	rf.checkAppliedCh = make(chan int)
+	go rf.checkApplied()
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-
+	<- rf.killedCh
 	return rf
+}
+
+func (rf *Raft) changeRole() {
+	for role := range rf.changeRoleCh {
+		preRole := rf.state
+		rf.state = role
+		if preRole == role {
+			continue
+		}
+		switch preRole {
+		case leader:
+			close(rf.stopChs["sendHB"])
+			close(rf.stopChs["updateFollowers"])
+		}
+
+		switch role {
+		case follower:
+			switch preRole {
+			case candidate:
+				close(rf.stopChs["election"])
+			}
+			go rf.checkHeartBeats()
+		case candidate:
+			go rf.tryWinElection()
+		case leader:
+			close(rf.stopChs["checkHB"])
+			close(rf.stopChs["election"])
+			go rf.sendHeartBeats()
+			go rf.updateFollowersLog()
+			for i := range rf.nextIndex {
+				rf.nextIndex[i] = rf.getLastLogIndex() + 1
+				rf.matchIndex[i] = 0
+				rf.updateFollowerLogCh[i] <- 1
+			}
+		}
+	}
+}
+
+func (rf *Raft) checkApplied() {
+	for {
+		<-rf.checkAppliedCh
+		if rf.commitIndex > rf.lastApplied {
+			rf.applyCh <- ApplyMsg{
+				CommandValid: true,
+				CommandIndex: rf.getLastLogIndex(),
+				Command: rf.log[rf.getLastLogIndex()].Command,
+			}
+			rf.lastApplied++
+			rf.checkAppliedCh <- 1
+		}
+	}
 }
 
 // heartbeats: 100 ms
 // election time elapse: 300~500 ms
 func (rf *Raft) checkHeartBeats() {
+	rf.stopChs["checkHB"] = make(chan int)
 	for {
-		electionTime := time.Millisecond*(time.Duration)(rf.electionTimeRange[0]+rand.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
-		time.Sleep(electionTime)
-		if rf.stopListenHB {
+		select {
+		case <-rf.stopChs["checkHB"]:
 			return
+		case <-rf.heartBeatsCh:
+			continue
+		case <-time.After(rf.getElectionTime()):
+			rf.changeRoleCh <- candidate
+		default:
 		}
-		if rf.ifElection {
-			rf.startElection()
-			rf.ifElection = false
-		} else {
-			rf.ifElection = true
-		}
 	}
-}
-
-func (rf *Raft) startElection() {
-	rf.mu.Lock()
-	rf.state = candidate
-	rf.currentTerm++
-	rf.votedFor = rf.me
-	args := RequestVoteArgs{
-		term: rf.currentTerm,
-		candidatedId: rf.me,
-		lastLogIndex: rf.getLastLogIndex(),
-		lastLogTerm: rf.currentTerm-1,
-	}
-	rf.mu.Unlock()
-	for index := range rf.peers {
-		reply := RequestVoteReply{}
-		go func() {
-			rf.sendRequestVote(index, &args, &reply)
-			if reply.voteGranted {
-
-			}
-	}
-	rf.stopListenHB = true
 }
 
 func (rf *Raft) getLastLogIndex() int {
-	return len(rf.log) - 1
+	return rf.log[len(rf.log)-1].Index
+}
+
+func (rf *Raft) getLastLogTerm() int {
+	return rf.log[len(rf.log)-1].Term
 }
