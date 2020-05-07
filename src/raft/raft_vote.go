@@ -32,23 +32,23 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	log.Printf("server %v receives request vote from server %v", rf.me, args.CandidateId)
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		rf.mu.Unlock()
 		return
 	}
 	if rf.currentTerm < args.Term {
 		rf.currentTerm = args.Term
+		rf.votedFor = -1
 		rf.changeRoleCh <- follower
 	}
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.getLastLogIndex() <= args.LastLogIndex {
-		rf.mu.Unlock()
+		rf.votedFor = args.CandidateId
 		reply.Term = args.Term
 		reply.VoteGranted = true
 		return
 	}
-	rf.mu.Unlock()
 	reply.Term = args.Term
 	reply.VoteGranted = false
 	return
