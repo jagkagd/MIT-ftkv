@@ -149,11 +149,42 @@ func (rf *Raft) updateFollowerLog(index int) {
 				if reply.Success {
 					rf.nextIndex[index] = rf.getLastLogIndex() + 1
 					rf.matchIndex[index] = rf.getLastLogIndex()
+					rf.checkCommitUpdateCh <- 1
 				} else {
 					rf.nextIndex[index]--
 					rf.updateFollowerLogCh[index] <- 1
 				}
 			}
+		}
+	}
+}
+
+func (rf *Raft) checkCommitUpdate() {
+	rf.stopChs["commitUpdate"] = make(chan int)
+	for {
+		select {
+		case <-rf.stopChs["commitUpdate"]:
+			return
+		case <-rf.checkCommitUpdateCh:
+			rf.mu.Lock()
+			i := rf.commitIndex+1
+			for {
+				// TODO leader.matchindex
+				matches := 0
+				for j := 0; j < len(rf.peers); j++ {
+					if rf.matchIndex[j] >= i {
+						matches++
+					}
+				}
+				if matches > len(rf.peers)/2 && rf.log[i].Term == rf.currentTerm {
+					i++
+				} else {
+					break
+				}
+			}
+			rf.commitIndex = i-1
+			rf.checkAppliedCh <- 1
+			rf.mu.Unlock()
 		}
 	}
 }

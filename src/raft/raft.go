@@ -94,6 +94,7 @@ type Raft struct {
 	changeTermCh chan int
 	heartBeatsCh chan int
 	checkAppliedCh chan int
+	checkCommitUpdateCh chan int
 	stopChs map[string](chan int)
 }
 
@@ -177,7 +178,18 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
-
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	term = rf.currentTerm
+	isLeader = rf.state == leader
+	if isLeader {
+		rf.log = append(rf.log, LogEntry{
+			Command: command,
+			Term: rf.currentTerm,
+			Index: rf.getLastLogIndex() + 1,
+		})
+		rf.matchIndex[rf.me] = rf.getLastLogIndex()
+	}
 
 	return index, term, isLeader
 }
@@ -232,6 +244,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		"election": make(chan int),
 		"sendHB": make(chan int),
 		"updateFollowers" : make(chan int),
+		"commitUpdate": make(chan int),
 	}
 	rf.changeRoleCh = make(chan ServerState)
 	rf.changeTermCh = make(chan int)
@@ -241,6 +254,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.changeRoleCh <- follower
 	rf.checkAppliedCh = make(chan int)
 	go rf.checkApplied()
+	rf.checkCommitUpdateCh = make(chan int)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
@@ -260,6 +274,7 @@ func (rf *Raft) changeRole() {
 		case leader:
 			close(rf.stopChs["sendHB"])
 			close(rf.stopChs["updateFollowers"])
+			close(rf.stopChs["commitUpdate"])
 		}
 
 		switch role {
