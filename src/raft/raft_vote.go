@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"math/rand"
 	"time"
 	// "../labrpc"
@@ -8,10 +9,10 @@ import (
 
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	term int
-	candidatedId int
-	lastLogIndex int
-	lastLogTerm int
+	Term int
+	CandidateId int
+	LastLogIndex int
+	LastLogTerm int
 }
 
 //
@@ -20,8 +21,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
-	term int
-	voteGranted bool
+	Term int
+	VoteGranted bool
 }
 
 //
@@ -29,26 +30,27 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	log.Printf("server %v receives request vote from server %v", rf.me, args.CandidateId)
 	rf.mu.Lock()
-	if args.term < rf.currentTerm {
-		reply.term = rf.currentTerm
-		reply.voteGranted = false
+	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		reply.VoteGranted = false
 		rf.mu.Unlock()
 		return
 	}
-	if rf.currentTerm < args.term {
-		rf.currentTerm = args.term
+	if rf.currentTerm < args.Term {
+		rf.currentTerm = args.Term
 		rf.changeRoleCh <- follower
 	}
-	if (rf.votedFor == -1 || rf.votedFor == args.candidatedId) && rf.getLastLogIndex() <= args.lastLogIndex {
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.getLastLogIndex() <= args.LastLogIndex {
 		rf.mu.Unlock()
-		reply.term = args.term
-		reply.voteGranted = true
+		reply.Term = args.Term
+		reply.VoteGranted = true
 		return
 	}
 	rf.mu.Unlock()
-	reply.term = args.term
-	reply.voteGranted = false
+	reply.Term = args.Term
+	reply.VoteGranted = false
 	return
 }
 
@@ -94,49 +96,57 @@ func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	rf.currentTerm++
 	rf.votedFor = rf.me
+	log.Printf("server %v start a election with term %v", rf.me, rf.currentTerm)
 	args := RequestVoteArgs{
-		term: rf.currentTerm,
-		candidatedId: rf.me,
-		lastLogIndex: rf.getLastLogIndex(),
-		lastLogTerm: rf.currentTerm-1,
+		Term: rf.currentTerm,
+		CandidateId: rf.me,
+		LastLogIndex: rf.getLastLogIndex(),
+		LastLogTerm: rf.getLastLogTerm(),
 	}
 	rf.mu.Unlock()
 	votesCh := make(chan int, len(rf.peers))
 	stopCh := make(chan int)
+	getVotes := 0
 	go func() {
-		for i := range votesCh {
-			i++
-			if i > len(rf.peers) {
+		for range votesCh {
+			getVotes++
+			if getVotes > len(rf.peers)/2 {
 				rf.changeRoleCh <- leader
 				close(stopCh)
 				return
 			}
 		}
 	}()
+	votesCh <- 1
 	for index := range rf.peers {
-		go func(index int) {
-			reply := RequestVoteReply{}
-			rf.sendRequestVote(index, &args, &reply)
-			if reply.voteGranted {
-				select {
-				case <-stopCh:
-					return
-				default:
+		if index != rf.me {
+			go func(index int) {
+				reply := RequestVoteReply{}
+				rf.sendRequestVote(index, &args, &reply)
+				if reply.VoteGranted {
+					select {
+					case <-stopCh:
+						return
+					default:
+					}
+					log.Printf("server %v receives vote from server %v", rf.me, index)
+					votesCh <- 1
 				}
-				votesCh <- 1
-			}
-		}(index)
+			}(index)
+		}
 	}
 }
 
 func (rf *Raft) tryWinElection() {
+	log.Printf("server %v try to win election", rf.me)
 	rf.stopChs["election"] = make(chan int)
+	go rf.startElection()
 	for {
 		select {
 		case <- rf.stopChs["election"]:
 			return
 		case <- time.After(rf.getElectionTime()):
-			rf.startElection()
+			go rf.startElection()
 		}
 	}
 }

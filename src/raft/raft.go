@@ -19,7 +19,6 @@ package raft
 
 import (
 	"log"
-	"time"
 	"sync"
 	"sync/atomic"
 	"../labrpc"
@@ -197,7 +196,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
-	rf.killedCh <- 1
 }
 
 func (rf *Raft) killed() bool {
@@ -222,10 +220,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-	log.Println("Make a raft server.")
+	log.Printf("Make a raft server No %v.", rf.me)
 
 	// Your initialization code here (2A, 2B, 2C).
-	rf.electionTimeRange = []int{150, 300}
+	rf.state = -1
+	rf.log = []LogEntry{}
+	rf.electionTimeRange = []int{300, 500}
+	rf.heartBeatTime = 100
 	rf.stopChs = map[string](chan int){
 		"checkHB": make(chan int),
 		"election": make(chan int),
@@ -236,15 +237,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.changeTermCh = make(chan int)
 	rf.heartBeatsCh = make(chan int)
 	rf.killedCh = make(chan int)
-	rf.changeRoleCh <- follower
 	go rf.changeRole()
+	rf.changeRoleCh <- follower
 	rf.checkAppliedCh = make(chan int)
 	go rf.checkApplied()
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
-	<- rf.killedCh
 	return rf
 }
 
@@ -252,6 +252,7 @@ func (rf *Raft) changeRole() {
 	for role := range rf.changeRoleCh {
 		preRole := rf.state
 		rf.state = role
+		log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
 		if preRole == role {
 			continue
 		}
@@ -274,11 +275,16 @@ func (rf *Raft) changeRole() {
 			close(rf.stopChs["checkHB"])
 			close(rf.stopChs["election"])
 			go rf.sendHeartBeats()
+			rf.nextIndex = make([]int, len(rf.peers))
+			rf.matchIndex = make([]int, len(rf.peers))
+			rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
 			go rf.updateFollowersLog()
 			for i := range rf.nextIndex {
-				rf.nextIndex[i] = rf.getLastLogIndex() + 1
-				rf.matchIndex[i] = 0
-				rf.updateFollowerLogCh[i] <- 1
+				if i != rf.me {
+					rf.nextIndex[i] = rf.getLastLogIndex() + 1
+					rf.matchIndex[i] = 0
+					rf.updateFollowerLogCh[i] <- 1
+				}
 			}
 		}
 	}
@@ -299,27 +305,17 @@ func (rf *Raft) checkApplied() {
 	}
 }
 
-// heartbeats: 100 ms
-// election time elapse: 300~500 ms
-func (rf *Raft) checkHeartBeats() {
-	rf.stopChs["checkHB"] = make(chan int)
-	for {
-		select {
-		case <-rf.stopChs["checkHB"]:
-			return
-		case <-rf.heartBeatsCh:
-			continue
-		case <-time.After(rf.getElectionTime()):
-			rf.changeRoleCh <- candidate
-		default:
-		}
-	}
-}
 
 func (rf *Raft) getLastLogIndex() int {
+	if len(rf.log) == 0 {
+		return 0
+	}
 	return rf.log[len(rf.log)-1].Index
 }
 
 func (rf *Raft) getLastLogTerm() int {
+	if len(rf.log) == 0 {
+		return 0
+	}
 	return rf.log[len(rf.log)-1].Term
 }

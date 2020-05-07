@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"time"
 )
 
@@ -30,13 +31,15 @@ func (rf *Raft) makeHeartBeat() AppendEntriesArgs {
 }
 
 func (rf *Raft) sendHeartBeats() {
+	log.Printf("server %v begins send HB", rf.me)
 	rf.stopChs["sendHB"] = make(chan int)
+	go rf.broadCastHB()
 	for {
 		select {
 		case <-rf.stopChs["sendHB"]:
 			return
 		case <-time.After(rf.getHBTime()):
-			rf.broadCastHB()
+			go rf.broadCastHB()
 		}
 	}
 }
@@ -48,10 +51,31 @@ func (rf *Raft) getHBTime() time.Duration {
 func (rf *Raft) broadCastHB() {
 	args := rf.makeHeartBeat()
 	for index := range rf.peers {
-		go func(index int) {
-			reply := AppendEntriesReply{}
-			rf.sendAppendEntries(index, &args, &reply)
-		}(index)
+		if index != rf.me {
+			go func(index int) {
+				reply := AppendEntriesReply{}
+				rf.sendAppendEntries(index, &args, &reply)
+			}(index)
+		}
+	}
+}
+
+// heartbeats: 100 ms
+// election time elapse: 300~500 ms
+func (rf *Raft) checkHeartBeats() {
+	log.Printf("server %v begins to check HB", rf.me)
+	rf.stopChs["checkHB"] = make(chan int)
+	for {
+		select {
+		case <-rf.stopChs["checkHB"]:
+			return
+		case <-rf.heartBeatsCh:
+			log.Printf("server %v get HB", rf.me)
+			continue
+		case <-time.After(rf.getElectionTime()):
+			log.Printf("server %v doesn't get HB", rf.me)
+			rf.changeRoleCh <- candidate
+		}
 	}
 }
 
@@ -61,15 +85,18 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	log.Printf("server %v gets append entries from server %v", rf.me, args.LeaderId)
 	rf.mu.Lock()
 	if args.Term > rf.currentTerm {
 		rf.currentTerm = args.Term
 		rf.mu.Unlock()
 		rf.changeRoleCh <- follower
+		rf.heartBeatsCh <- 1
 	}
 	if args.PreLogIndex == rf.getLastLogIndex() && args.PreLogTerm == rf.getLastLogTerm() {
 		reply.Success = true
 		reply.Term = rf.currentTerm
+		rf.heartBeatsCh <- 1
 		return
 	}
 	reply.Term = rf.currentTerm
@@ -83,6 +110,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if rf.getLastLogIndex() < args.PreLogIndex {
 		reply.Success = false
 		rf.mu.Unlock()
+		rf.heartBeatsCh <- 1
 		return
 	}
 	rf.mu.Lock()
@@ -100,13 +128,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.checkAppliedCh <- 1
 	}
 	rf.mu.Unlock()
+	rf.heartBeatsCh <- 1
 	return
 }
 
 func (rf *Raft) updateFollowersLog() {
 	rf.stopChs["updateFollowers"] = make(chan int)
 	for index := range rf.peers {
-		go rf.updateFollowerLog(index)
+		if index != rf.me {
+			go rf.updateFollowerLog(index)
+		}
 	}
 }
 
