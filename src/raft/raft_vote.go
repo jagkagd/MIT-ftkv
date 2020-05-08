@@ -36,21 +36,25 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
+		log.Printf("server %v return false for args.Term %v < rf.currentTerm %v", rf.me, args.Term, rf.currentTerm)
 		return
 	}
 	if rf.currentTerm < args.Term {
 		rf.currentTerm = args.Term
-		rf.votedFor = -1
+		rf.votedFor = args.CandidateId
 		rf.changeRoleCh <- follower
 	}
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.getLastLogIndex() <= args.LastLogIndex {
+		log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
 		reply.Term = args.Term
+		log.Printf("server %v voted %v", rf.me, args.CandidateId)
 		reply.VoteGranted = true
 		return
 	}
 	reply.Term = args.Term
 	reply.VoteGranted = false
+	log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
 	return
 }
 
@@ -143,6 +147,8 @@ func (rf *Raft) tryWinElection() {
 	go rf.startElection()
 	for {
 		select {
+		case <- rf.killedCh:
+			return
 		case <- rf.stopChs["election"]:
 			return
 		case <- time.After(rf.getElectionTime()):

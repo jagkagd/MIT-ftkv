@@ -1,0 +1,95 @@
+2020/05/08 17:16:41 Make a raft server No 0.
+2020/05/08 17:16:41 server 0 change role from -1 to 0
+2020/05/08 17:16:41 Make a raft server No 1.
+2020/05/08 17:16:41 server 1 change role from -1 to 0
+2020/05/08 17:16:41 Make a raft server No 2.
+2020/05/08 17:16:41 server 2 change role from -1 to 0
+Test (2B): basic agreement ...
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 0 start with command 100
+2020/05/08 17:16:41 server 2 doesn't get HB
+2020/05/08 17:16:41 server 2 change role from 0 to 1
+2020/05/08 17:16:41 server 2 try to win election
+2020/05/08 17:16:41 server 2 start a election with term 1
+2020/05/08 17:16:41 server 1 receives request vote from server 2
+2020/05/08 17:16:41 server 1 votedFor 2 for request from server 2
+2020/05/08 17:16:41 server 1 voted 2
+2020/05/08 17:16:41 server 2 receives vote from server 1
+2020/05/08 17:16:41 server 2 change role from 1 to 2
+2020/05/08 17:16:41 server 1 change role from 0 to 0
+2020/05/08 17:16:41 server 2 begins send HB
+2020/05/08 17:16:41 server 2 sends HB
+2020/05/08 17:16:41 server 0 receives request vote from server 2
+2020/05/08 17:16:41 server 0 votedFor 2 for request from server 2
+2020/05/08 17:16:41 server 0 voted 2
+2020/05/08 17:16:41 server 0 change role from 0 to 0
+2020/05/08 17:16:41 server 1 start with command 100
+2020/05/08 17:16:41 server 2 start with command 100
+2020/05/08 17:16:41 server 2 gets Command 100
+2020/05/08 17:16:42 server 1 doesn't get HB
+2020/05/08 17:16:42 server 1 change role from 0 to 1
+2020/05/08 17:16:42 server 1 try to win election
+2020/05/08 17:16:42 server 1 start a election with term 2
+2020/05/08 17:16:42 server 2 receives request vote from server 1
+2020/05/08 17:16:42 server 0 receives request vote from server 1
+2020/05/08 17:16:42 server 0 votedFor 1 for request from server 1
+2020/05/08 17:16:42 server 0 voted 1
+2020/05/08 17:16:42 server 0 change role from 0 to 0
+2020/05/08 17:16:42 server 1 receives vote from server 0
+2020/05/08 17:16:42 server 1 change role from 1 to 2
+2020/05/08 17:16:42 server 1 begins send HB
+2020/05/08 17:16:42 server 1 sends HB
+2020/05/08 17:16:42 server 1 sends HB
+2020/05/08 17:16:42 server 1 sends HB
+2020/05/08 17:16:42 server 1 sends HB
+2020/05/08 17:16:42 server 1 sends HB
+2020/05/08 17:16:42 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:43 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+2020/05/08 17:16:44 server 1 sends HB
+signal: interrupt
+FAIL	_/mnt/e/try/MIT-6.824/src/raft	3.624s

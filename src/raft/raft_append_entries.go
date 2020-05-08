@@ -36,6 +36,8 @@ func (rf *Raft) sendHeartBeats() {
 	go rf.broadCastHB()
 	for {
 		select {
+		case <-rf.killedCh:
+			return
 		case <-rf.stopChs["sendHB"]:
 			return
 		case <-time.After(rf.getHBTime()):
@@ -50,8 +52,10 @@ func (rf *Raft) getHBTime() time.Duration {
 
 func (rf *Raft) broadCastHB() {
 	args := rf.makeHeartBeat()
+	log.Printf("server %v sends HB", rf.me)
 	for index := range rf.peers {
 		if index != rf.me {
+			// log.Printf("server %v send HB to %v", rf.me, index)
 			go func(index int) {
 				reply := AppendEntriesReply{}
 				rf.sendAppendEntries(index, &args, &reply)
@@ -66,6 +70,8 @@ func (rf *Raft) checkHeartBeats() {
 	rf.stopChs["checkHB"] = make(chan int)
 	for {
 		select {
+		case <-rf.killedCh:
+			return
 		case <-rf.stopChs["checkHB"]:
 			return
 		case <-rf.heartBeatsCh:
@@ -85,8 +91,10 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	// log.Printf("Append Entries %v to server %v", *args, rf.me)
 	reply.Term = rf.currentTerm
-	if args.Term < rf.currentTerm {
+	if args.Term < rf.currentTerm { // self is newer
+		log.Printf("Leader %v.Term %v, server %v.currentTerm %v", args.LeaderId, args.Term, rf.me, rf.currentTerm)
 		reply.Success = false
 		return
 	}
@@ -104,8 +112,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		return
 	}
-	if rf.log[args.PreLogIndex].Term != args.Term {
-		rf.log = rf.log[:args.PreLogIndex-1]
+	if rf.getLogByIndex(args.PreLogIndex).Term != args.Term {
+		rf.log = rf.getLogByIndexRange(1, args.PreLogIndex-1)
 		reply.Success = false
 	}
 	rf.log = append(rf.log, args.Entries...)
@@ -132,6 +140,8 @@ func (rf *Raft) updateFollowersLog() {
 func (rf *Raft) updateFollowerLog(index int) {
 	for {
 		select {
+		case <-rf.killedCh:
+			return
 		case <-rf.stopChs["updateFollowers"]:
 			return
 		case <-rf.updateFollowerLogCh[index]:
@@ -141,7 +151,7 @@ func (rf *Raft) updateFollowerLog(index int) {
 					LeaderId: rf.me,
 					PreLogIndex: rf.getLastLogIndex(),
 					PreLogTerm: rf.getLastLogTerm(),
-					Entries: rf.log[rf.nextIndex[index]:],
+					Entries: rf.getLogByIndexRange(rf.nextIndex[index], -1),
 					LeaderCommit: rf.commitIndex,
 				}
 				reply := AppendEntriesReply{}
@@ -163,20 +173,21 @@ func (rf *Raft) checkCommitUpdate() {
 	rf.stopChs["commitUpdate"] = make(chan int)
 	for {
 		select {
+		case <-rf.killedCh:
+			return
 		case <-rf.stopChs["commitUpdate"]:
 			return
 		case <-rf.checkCommitUpdateCh:
 			rf.mu.Lock()
 			i := rf.commitIndex+1
 			for {
-				// TODO leader.matchindex
 				matches := 0
 				for j := 0; j < len(rf.peers); j++ {
 					if rf.matchIndex[j] >= i {
 						matches++
 					}
 				}
-				if matches > len(rf.peers)/2 && rf.log[i].Term == rf.currentTerm {
+				if matches > len(rf.peers)/2 && rf.getLogByIndex(i).Term == rf.currentTerm {
 					i++
 				} else {
 					break
@@ -185,6 +196,14 @@ func (rf *Raft) checkCommitUpdate() {
 			rf.commitIndex = i-1
 			rf.checkAppliedCh <- 1
 			rf.mu.Unlock()
+		}
+	}
+}
+
+func (rf *Raft) triggerUpdateFollowers() {
+	for i := range rf.peers {
+		if i != rf.me {
+			rf.updateFollowerLogCh[i] <- 1
 		}
 	}
 }

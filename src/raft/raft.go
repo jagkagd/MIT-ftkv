@@ -91,7 +91,6 @@ type Raft struct {
 	heartBeatTime int
 
 	changeRoleCh chan ServerState
-	changeTermCh chan int
 	heartBeatsCh chan int
 	checkAppliedCh chan int
 	checkCommitUpdateCh chan int
@@ -173,6 +172,7 @@ func (rf *Raft) readPersist(data []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
+	log.Printf("server %v start with command %v", rf.me, command)
 	index := -1
 	term := -1
 	isLeader := true
@@ -180,9 +180,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// Your code here (2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	index = rf.getLastLogIndex() + 1
 	term = rf.currentTerm
 	isLeader = rf.state == leader
 	if isLeader {
+		log.Printf("server %v gets Command %v", rf.me, command)
 		rf.log = append(rf.log, LogEntry{
 			Command: command,
 			Term: rf.currentTerm,
@@ -190,7 +192,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		})
 		rf.matchIndex[rf.me] = rf.getLastLogIndex()
 	}
-
 	return index, term, isLeader
 }
 
@@ -208,6 +209,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	close(rf.killedCh)
 }
 
 func (rf *Raft) killed() bool {
@@ -236,9 +238,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
+	rf.votedFor = -1
 	rf.log = []LogEntry{}
-	rf.electionTimeRange = []int{300, 500}
-	rf.heartBeatTime = 100
+	rf.electionTimeRange = []int{400, 600}
+	rf.heartBeatTime = 120
 	rf.stopChs = map[string](chan int){
 		"checkHB": make(chan int),
 		"election": make(chan int),
@@ -247,7 +250,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		"commitUpdate": make(chan int),
 	}
 	rf.changeRoleCh = make(chan ServerState)
-	rf.changeTermCh = make(chan int)
 	rf.heartBeatsCh = make(chan int)
 	rf.killedCh = make(chan int)
 	go rf.changeRole()
@@ -293,11 +295,11 @@ func (rf *Raft) changeRole() {
 			rf.nextIndex = make([]int, len(rf.peers))
 			rf.matchIndex = make([]int, len(rf.peers))
 			rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
+			rf.matchIndex[rf.me] = rf.getLastLogIndex()
 			go rf.updateFollowersLog()
 			for i := range rf.nextIndex {
 				if i != rf.me {
 					rf.nextIndex[i] = rf.getLastLogIndex() + 1
-					rf.matchIndex[i] = 0
 					rf.updateFollowerLogCh[i] <- 1
 				}
 			}
@@ -305,32 +307,60 @@ func (rf *Raft) changeRole() {
 	}
 }
 
-func (rf *Raft) checkApplied() {
-	for {
-		<-rf.checkAppliedCh
-		if rf.commitIndex > rf.lastApplied {
-			rf.applyCh <- ApplyMsg{
-				CommandValid: true,
-				CommandIndex: rf.getLastLogIndex(),
-				Command: rf.log[rf.getLastLogIndex()].Command,
-			}
-			rf.lastApplied++
-			rf.checkAppliedCh <- 1
-		}
-	}
-}
-
-
 func (rf *Raft) getLastLogIndex() int {
 	if len(rf.log) == 0 {
 		return 0
 	}
-	return rf.log[len(rf.log)-1].Index
+	return rf.getLogByIndex(-1).Index
 }
 
 func (rf *Raft) getLastLogTerm() int {
 	if len(rf.log) == 0 {
 		return 0
 	}
-	return rf.log[len(rf.log)-1].Term
+	return rf.getLogByIndex(-1).Term
+}
+
+func (rf *Raft) checkApplied() {
+	for {
+		select {
+		case <-rf.killedCh:
+			return
+		case <-rf.checkAppliedCh:
+			if rf.commitIndex > rf.lastApplied {
+				log.Printf("server %v applied log %v", rf.me, rf.lastApplied)
+				appliedLog := rf.getLogByIndex(rf.lastApplied)
+				rf.applyCh <- ApplyMsg{
+					Command: appliedLog.Command,
+					CommandIndex: rf.lastApplied,
+					CommandValid: true,
+				}
+				rf.lastApplied++
+				rf.checkAppliedCh <- 1
+			}
+		}
+	}
+}
+
+func (rf *Raft) convertIndex(i int) int {
+	if i == 0 {
+		panic("Index can't be 0!")
+	}
+	if i > 0 {
+		return i - 1
+	} else {
+		return len(rf.log)-i
+	}
+}
+
+func (rf *Raft) getLogByIndex(i int) LogEntry {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.log[rf.convertIndex(i)]
+}
+
+func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.log[rf.convertIndex(i):rf.convertIndex(j)]
 }
