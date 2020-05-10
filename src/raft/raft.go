@@ -265,42 +265,51 @@ func Make(peers []*labrpc.ClientEnd, me int,
 }
 
 func (rf *Raft) changeRole() {
-	for role := range rf.changeRoleCh {
-		preRole := rf.state
-		rf.state = role
-		log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
-		if preRole == role {
-			continue
-		}
-		switch preRole {
-		case leader:
-			close(rf.stopChs["sendHB"])
-			close(rf.stopChs["updateFollowers"])
-			close(rf.stopChs["commitUpdate"])
-		}
-
-		switch role {
-		case follower:
-			switch preRole {
-			case candidate:
-				close(rf.stopChs["election"])
+	var role ServerState
+	for {
+		select {
+		case <-rf.killedCh:
+			return
+		case role = <-rf.changeRoleCh:
+			preRole := rf.state
+			rf.state = role
+			log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
+			if preRole == role {
+				continue
 			}
-			go rf.checkHeartBeats()
-		case candidate:
-			go rf.tryWinElection()
-		case leader:
-			close(rf.stopChs["checkHB"])
-			close(rf.stopChs["election"])
-			go rf.sendHeartBeats()
-			rf.nextIndex = make([]int, len(rf.peers))
-			rf.matchIndex = make([]int, len(rf.peers))
-			rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
-			rf.matchIndex[rf.me] = rf.getLastLogIndex()
-			go rf.updateFollowersLog()
-			for i := range rf.nextIndex {
-				if i != rf.me {
-					rf.nextIndex[i] = rf.getLastLogIndex() + 1
-					rf.updateFollowerLogCh[i] <- 1
+			switch preRole {
+			case leader:
+				close(rf.stopChs["sendHB"])
+				close(rf.stopChs["updateFollowers"])
+				close(rf.stopChs["commitUpdate"])
+			}
+
+			switch role {
+			case follower:
+				switch preRole {
+				case candidate:
+					close(rf.stopChs["election"])
+				}
+				go rf.checkHeartBeats()
+			case candidate:
+				go rf.tryWinElection()
+			case leader:
+				close(rf.stopChs["checkHB"])
+				close(rf.stopChs["election"])
+				go rf.sendHeartBeats()
+				rf.nextIndex = make([]int, len(rf.peers))
+				rf.matchIndex = make([]int, len(rf.peers))
+				rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
+				for i := range rf.peers {
+					rf.updateFollowerLogCh[i] = make(chan int)
+				}
+				rf.matchIndex[rf.me] = rf.getLastLogIndex()
+				go rf.updateFollowersLog()
+				for i := range rf.peers {
+					if i != rf.me {
+						rf.nextIndex[i] = rf.getLastLogIndex() + 1
+						rf.updateFollowerLogCh[i] <- 1
+					}
 				}
 			}
 		}

@@ -52,13 +52,20 @@ func (rf *Raft) getHBTime() time.Duration {
 
 func (rf *Raft) broadCastHB() {
 	args := rf.makeHeartBeat()
-	log.Printf("server %v sends HB", rf.me)
 	for index := range rf.peers {
+		select {
+		case <-rf.stopChs["sendHB"]:
+			return
+		default:
+		}
 		if index != rf.me {
-			// log.Printf("server %v send HB to %v", rf.me, index)
 			go func(index int) {
 				reply := AppendEntriesReply{}
 				rf.sendAppendEntries(index, &args, &reply)
+				if reply.Term > rf.currentTerm {
+					rf.changeRoleCh <- follower
+					rf.currentTerm = reply.Term
+				}
 			}(index)
 		}
 	}
@@ -91,10 +98,9 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	// log.Printf("Append Entries %v to server %v", *args, rf.me)
+	log.Printf("server %v receive AE %v from %v", rf.me, *args, args.Term)
 	reply.Term = rf.currentTerm
 	if args.Term < rf.currentTerm { // self is newer
-		log.Printf("Leader %v.Term %v, server %v.currentTerm %v", args.LeaderId, args.Term, rf.me, rf.currentTerm)
 		reply.Success = false
 		return
 	}
