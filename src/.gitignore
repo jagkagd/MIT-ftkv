@@ -10,3 +10,5 @@ mrtmp.*
 /main/mrmaster
 /main/mrworker
 *.so
+/raft/out
+

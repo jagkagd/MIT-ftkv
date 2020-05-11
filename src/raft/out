@@ -1,178 +1,237 @@
-2020/05/10 17:07:17 Make a raft server No 0.
-2020/05/10 17:07:17 server 0 change role from -1 to 0
-2020/05/10 17:07:17 Make a raft server No 1.
-2020/05/10 17:07:17 server 1 change role from -1 to 0
-2020/05/10 17:07:17 Make a raft server No 2.
-2020/05/10 17:07:17 server 2 change role from -1 to 0
+2020/05/11 11:23:22 Make a raft server No 0.
+2020/05/11 11:23:22 server 0 change role from -1 to 0
+2020/05/11 11:23:22 server 0 start checkHB
+2020/05/11 11:23:22 Make a raft server No 1.
+2020/05/11 11:23:22 server 1 change role from -1 to 0
+2020/05/11 11:23:22 server 1 start checkHB
+2020/05/11 11:23:22 Make a raft server No 2.
+2020/05/11 11:23:22 server 2 change role from -1 to 0
+2020/05/11 11:23:22 server 2 start checkHB
 Test (2A): initial election ...
-2020/05/10 17:07:17 server 0 doesn't get HB
-2020/05/10 17:07:17 server 0 change role from 0 to 1
-2020/05/10 17:07:17 server 0 try to win election
-2020/05/10 17:07:17 server 0 start a election with term 1
-2020/05/10 17:07:17 server 2 receives request vote from server 0
-2020/05/10 17:07:17 server 2 votedFor 0 for request from server 0
-2020/05/10 17:07:17 server 2 voted 0
-2020/05/10 17:07:17 server 0 receives vote from server 2
-2020/05/10 17:07:17 server 0 change role from 1 to 2
-2020/05/10 17:07:17 server 0 begins send HB
-2020/05/10 17:07:17 server 2 change role from 0 to 0
-2020/05/10 17:07:17 server 1 receives request vote from server 0
-2020/05/10 17:07:17 server 1 votedFor 0 for request from server 0
-2020/05/10 17:07:17 server 1 change role from 0 to 0
-2020/05/10 17:07:17 server 1 voted 0
-2020/05/10 17:07:17 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:17 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:18 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:19 server 1 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 2 receive AE {1 0 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 1 receive AE {1 0 0 0 [] 0} from 1
-  ... Passed --   3.0  3   46   12108    0
-2020/05/10 17:07:20 Make a raft server No 0.
-2020/05/10 17:07:20 server 0 change role from -1 to 0
-2020/05/10 17:07:20 Make a raft server No 1.
-2020/05/10 17:07:20 server 1 change role from -1 to 0
-2020/05/10 17:07:20 Make a raft server No 2.
-2020/05/10 17:07:20 server 2 change role from -1 to 0
+2020/05/11 11:23:22 server 0 doesn't get HB
+2020/05/11 11:23:22 server 0 change role from 0 to 1
+2020/05/11 11:23:22 server 0 try to win election
+2020/05/11 11:23:22 server 0 start a election with term 1
+2020/05/11 11:23:22 server 2 receives request vote from server 0
+2020/05/11 11:23:22 server 2 votedFor 0 for request from server 0
+2020/05/11 11:23:22 server 2 voted 0
+2020/05/11 11:23:22 server 2 change role from 0 to 0
+2020/05/11 11:23:22 server 0 receives vote from server 2
+2020/05/11 11:23:22 server 0 change role from 1 to 2
+2020/05/11 11:23:22 server 0 begins send HB
+2020/05/11 11:23:22 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:22 server 1 receives request vote from server 0
+2020/05/11 11:23:22 server 1 votedFor 0 for request from server 0
+2020/05/11 11:23:22 server 1 voted 0
+2020/05/11 11:23:22 server 1 change role from 0 to 0
+2020/05/11 11:23:22 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:22 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:22 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:22 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:22 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:23 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:23 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:24 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:24 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:25 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:25 server 1 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:25 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:25 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:25 server 2 receive AE {1 0 0 0 [] 0}
+2020/05/11 11:23:25 server 1 receive AE {1 0 0 0 [] 0}
+  ... Passed --   3.1  3   46   12108    0
+2020/05/11 11:23:25 Make a raft server No 0.
+2020/05/11 11:23:25 server 0 change role from -1 to 0
+2020/05/11 11:23:25 server 0 start checkHB
+2020/05/11 11:23:25 Make a raft server No 1.
+2020/05/11 11:23:25 server 1 change role from -1 to 0
+2020/05/11 11:23:25 server 1 start checkHB
+2020/05/11 11:23:25 Make a raft server No 2.
+2020/05/11 11:23:25 server 2 change role from -1 to 0
+2020/05/11 11:23:25 server 2 start checkHB
 Test (2A): election after network failure ...
-2020/05/10 17:07:20 server 2 doesn't get HB
-2020/05/10 17:07:20 server 2 change role from 0 to 1
-2020/05/10 17:07:20 server 2 try to win election
-2020/05/10 17:07:20 server 2 start a election with term 1
-2020/05/10 17:07:20 server 0 receives request vote from server 2
-2020/05/10 17:07:20 server 0 votedFor 2 for request from server 2
-2020/05/10 17:07:20 server 0 voted 2
-2020/05/10 17:07:20 server 2 receives vote from server 0
-2020/05/10 17:07:20 server 2 change role from 1 to 2
-2020/05/10 17:07:20 server 1 receives request vote from server 2
-2020/05/10 17:07:20 server 1 votedFor 2 for request from server 2
-2020/05/10 17:07:20 server 1 voted 2
-2020/05/10 17:07:20 server 0 change role from 0 to 0
-2020/05/10 17:07:20 server 2 begins send HB
-2020/05/10 17:07:20 server 1 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 1 change role from 0 to 0
-2020/05/10 17:07:20 server 0 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 1 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 0 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 1 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:20 server 0 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:21 server 1 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:21 server 0 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:21 -----first leader: 2
-2020/05/10 17:07:21 -----first leader 2 disconnect
-2020/05/10 17:07:21 server 0 doesn't get HB
-2020/05/10 17:07:21 server 0 change role from 0 to 1
-2020/05/10 17:07:21 server 0 try to win election
-2020/05/10 17:07:21 server 0 start a election with term 2
-2020/05/10 17:07:21 server 1 receives request vote from server 0
-2020/05/10 17:07:21 server 1 votedFor 0 for request from server 0
-2020/05/10 17:07:21 server 1 voted 0
-2020/05/10 17:07:21 server 1 change role from 0 to 0
-2020/05/10 17:07:21 server 0 receives vote from server 1
-2020/05/10 17:07:21 server 0 change role from 1 to 2
-2020/05/10 17:07:21 server 0 begins send HB
-2020/05/10 17:07:21 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 -----first leader 2 rejoin
-2020/05/10 17:07:21 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 server 2 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 server 1 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:21 server 2 change role from 2 to 0
-2020/05/10 17:07:21 server 0 receive AE {1 2 0 0 [] 0} from 1
-2020/05/10 17:07:21 server 2 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 server 2 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:21 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:22 server 2 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:22 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:22 -----leader2 0
-2020/05/10 17:07:22 -----expect no leader
-2020/05/10 17:07:22 server 1 doesn't get HB
-2020/05/10 17:07:22 server 1 change role from 0 to 1
-2020/05/10 17:07:22 server 1 try to win election
-2020/05/10 17:07:22 server 1 start a election with term 3
-2020/05/10 17:07:22 server 2 doesn't get HB
-2020/05/10 17:07:22 server 2 change role from 0 to 1
-2020/05/10 17:07:22 server 2 try to win election
-2020/05/10 17:07:22 server 2 start a election with term 3
-2020/05/10 17:07:22 server 1 start a election with term 4
-2020/05/10 17:07:23 server 1 doesn't get HB
-2020/05/10 17:07:23 server 1 change role from 1 to 1
-2020/05/10 17:07:23 server 2 doesn't get HB
-2020/05/10 17:07:23 server 2 change role from 1 to 1
-2020/05/10 17:07:23 server 2 start a election with term 4
-2020/05/10 17:07:23 server 1 start a election with term 5
-2020/05/10 17:07:23 server 2 doesn't get HB
-2020/05/10 17:07:23 server 2 change role from 1 to 1
-2020/05/10 17:07:23 server 1 doesn't get HB
-2020/05/10 17:07:23 server 1 change role from 1 to 1
-2020/05/10 17:07:23 server 2 start a election with term 5
-2020/05/10 17:07:23 server 1 start a election with term 6
-2020/05/10 17:07:24 server 2 doesn't get HB
-2020/05/10 17:07:24 server 2 change role from 1 to 1
-2020/05/10 17:07:24 server 2 start a election with term 6
-2020/05/10 17:07:24 server 1 doesn't get HB
-2020/05/10 17:07:24 server 1 change role from 1 to 1
-2020/05/10 17:07:24 -----expect a leader
-2020/05/10 17:07:24 server 1 start a election with term 7
-2020/05/10 17:07:24 server 2 receives request vote from server 1
-2020/05/10 17:07:24 server 2 votedFor 1 for request from server 1
-2020/05/10 17:07:24 server 2 voted 1
-2020/05/10 17:07:24 server 1 receives vote from server 2
-2020/05/10 17:07:24 server 1 change role from 1 to 2
-2020/05/10 17:07:24 server 2 change role from 1 to 0
-2020/05/10 17:07:24 server 1 begins send HB
-2020/05/10 17:07:24 server 2 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 server 2 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 -----expect a leader
-2020/05/10 17:07:24 server 2 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:24 server 0 change role from 2 to 0
-2020/05/10 17:07:24 server 1 receive AE {2 0 0 0 [] 0} from 2
-2020/05/10 17:07:24 server 0 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 server 2 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 server 0 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 server 2 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 server 2 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:24 server 0 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:25 server 2 receive AE {7 1 0 0 [] 0} from 7
-2020/05/10 17:07:25 server 0 receive AE {7 1 0 0 [] 0} from 7
-  ... Passed --   4.9  3  108   22120    0
+2020/05/11 11:23:25 server 2 doesn't get HB
+2020/05/11 11:23:25 server 2 change role from 0 to 1
+2020/05/11 11:23:25 server 2 try to win election
+2020/05/11 11:23:25 server 2 start a election with term 1
+2020/05/11 11:23:25 server 0 receives request vote from server 2
+2020/05/11 11:23:25 server 0 votedFor 2 for request from server 2
+2020/05/11 11:23:25 server 0 change role from 0 to 0
+2020/05/11 11:23:25 server 0 voted 2
+2020/05/11 11:23:25 server 1 receives request vote from server 2
+2020/05/11 11:23:25 server 1 votedFor 2 for request from server 2
+2020/05/11 11:23:25 server 1 voted 2
+2020/05/11 11:23:25 server 2 receives vote from server 0
+2020/05/11 11:23:25 server 2 change role from 1 to 2
+2020/05/11 11:23:25 server 1 change role from 0 to 0
+2020/05/11 11:23:25 server 2 begins send HB
+2020/05/11 11:23:25 server 2 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:25 server 1 receive AE {1 2 0 0 [] 0}
+2020/05/11 11:23:25 server 0 receive AE {1 2 0 0 [] 0}
+2020/05/11 11:23:25 server 2 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:25 server 2 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:25 server 2 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 0 doesn't get HB
+2020/05/11 11:23:26 server 0 change role from 0 to 1
+2020/05/11 11:23:26 server 0 try to win election
+2020/05/11 11:23:26 server 0 start a election with term 2
+2020/05/11 11:23:26 server 1 receives request vote from server 0
+2020/05/11 11:23:26 server 1 votedFor 0 for request from server 0
+2020/05/11 11:23:26 server 1 voted 0
+2020/05/11 11:23:26 server 0 receives vote from server 1
+2020/05/11 11:23:26 server 0 change role from 1 to 2
+2020/05/11 11:23:26 server 1 change role from 0 to 0
+2020/05/11 11:23:26 server 0 begins send HB
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 2 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 2 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 1 receive AE {1 2 0 0 [] 0}
+2020/05/11 11:23:26 server 0 receive AE {1 2 0 0 [] 0}
+2020/05/11 11:23:26 server 2 change role from 2 to 0
+2020/05/11 11:23:26 server 2 start checkHB
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 2 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 2 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 2 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 2 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:26 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 2 doesn't get HB
+2020/05/11 11:23:27 server 2 change role from 0 to 1
+2020/05/11 11:23:27 server 2 try to win election
+2020/05/11 11:23:27 server 2 start a election with term 3
+2020/05/11 11:23:27 server 1 doesn't get HB
+2020/05/11 11:23:27 server 1 change role from 0 to 1
+2020/05/11 11:23:27 server 1 try to win election
+2020/05/11 11:23:27 server 1 start a election with term 3
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 2 start a election with term 4
+2020/05/11 11:23:27 server 1 start a election with term 4
+2020/05/11 11:23:27 server 2 doesn't get HB
+2020/05/11 11:23:27 server 2 change role from 1 to 1
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 1 doesn't get HB
+2020/05/11 11:23:27 server 1 change role from 1 to 1
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:27 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 1 start a election with term 5
+2020/05/11 11:23:28 server 2 doesn't get HB
+2020/05/11 11:23:28 server 2 change role from 1 to 1
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 2 start a election with term 5
+2020/05/11 11:23:28 server 1 doesn't get HB
+2020/05/11 11:23:28 server 1 change role from 1 to 1
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 1 start a election with term 6
+2020/05/11 11:23:28 server 2 start a election with term 6
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 1 doesn't get HB
+2020/05/11 11:23:28 server 1 change role from 1 to 1
+2020/05/11 11:23:28 server 2 doesn't get HB
+2020/05/11 11:23:28 server 2 change role from 1 to 1
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 1 start a election with term 7
+2020/05/11 11:23:28 server 2 receives request vote from server 1
+2020/05/11 11:23:28 server 2 votedFor 1 for request from server 1
+2020/05/11 11:23:28 server 2 voted 1
+2020/05/11 11:23:28 server 1 receives vote from server 2
+2020/05/11 11:23:28 server 2 change role from 1 to 0
+2020/05/11 11:23:28 server 2 start checkHB
+2020/05/11 11:23:28 server 1 change role from 1 to 2
+2020/05/11 11:23:28 server 1 begins send HB
+2020/05/11 11:23:28 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:28 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:28 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 0 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:29 server 1 receive AE {2 0 0 0 [] 0}
+2020/05/11 11:23:29 server 0 change role from 2 to 0
+2020/05/11 11:23:29 server 0 start checkHB
+2020/05/11 11:23:29 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 0 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 0 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 0 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 1 send HB with matchIndex [0 0 0]
+2020/05/11 11:23:29 server 2 receive AE {7 1 0 0 [] 0}
+2020/05/11 11:23:29 server 0 receive AE {7 1 0 0 [] 0}
+  ... Passed --   4.5  3  102   20562    0
 PASS
-ok  	_/mnt/e/try/MIT-6.824/src/raft	7.966s
+ok  	_/mnt/e/try/MIT-6.824/src/raft	7.597s

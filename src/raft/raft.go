@@ -172,25 +172,25 @@ func (rf *Raft) readPersist(data []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	log.Printf("server %v start with command %v", rf.me, command)
 	index := -1
 	term := -1
 	isLeader := true
 
 	// Your code here (2B).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	index = rf.getLastLogIndex() + 1
 	term = rf.currentTerm
 	isLeader = rf.state == leader
 	if isLeader {
 		log.Printf("server %v gets Command %v", rf.me, command)
-		rf.log = append(rf.log, LogEntry{
-			Command: command,
-			Term: rf.currentTerm,
-			Index: rf.getLastLogIndex() + 1,
-		})
-		rf.matchIndex[rf.me] = rf.getLastLogIndex()
+		go func(index, term int) {
+			rf.log = append(rf.log, LogEntry{
+				Command: command,
+				Term: term,
+				Index: index,
+			})
+			rf.matchIndex[rf.me] = rf.getLastLogIndex()
+			go rf.triggerUpdateFollowers()
+		}(index, term)
 	}
 	return index, term, isLeader
 }
@@ -234,12 +234,17 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.applyCh = applyCh
 	log.Printf("Make a raft server No %v.", rf.me)
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
 	rf.votedFor = -1
-	rf.log = []LogEntry{}
+	rf.log = []LogEntry{LogEntry{
+		Index: 0,
+		Term: 0,
+		Command: struct{}{},
+	}}
 	rf.electionTimeRange = []int{400, 600}
 	rf.heartBeatTime = 120
 	rf.stopChs = map[string](chan int){
@@ -249,14 +254,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		"updateFollowers" : make(chan int),
 		"commitUpdate": make(chan int),
 	}
-	rf.changeRoleCh = make(chan ServerState)
 	rf.heartBeatsCh = make(chan int)
 	rf.killedCh = make(chan int)
 	go rf.changeRole()
-	rf.changeRoleCh <- follower
 	rf.checkAppliedCh = make(chan int)
 	go rf.checkApplied()
-	rf.checkCommitUpdateCh = make(chan int)
+	rf.changeRoleCh = make(chan ServerState)
+	rf.changeRoleCh <- follower
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
@@ -272,7 +276,6 @@ func (rf *Raft) changeRole() {
 			return
 		case role = <-rf.changeRoleCh:
 			preRole := rf.state
-			rf.state = role
 			log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
 			if preRole == role {
 				continue
@@ -297,14 +300,16 @@ func (rf *Raft) changeRole() {
 				close(rf.stopChs["checkHB"])
 				close(rf.stopChs["election"])
 				go rf.sendHeartBeats()
+				rf.checkCommitUpdateCh = make(chan int)
+				go rf.checkCommitUpdate()
 				rf.nextIndex = make([]int, len(rf.peers))
 				rf.matchIndex = make([]int, len(rf.peers))
+				rf.matchIndex[rf.me] = rf.getLastLogIndex()
 				rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
 				for i := range rf.peers {
 					rf.updateFollowerLogCh[i] = make(chan int)
 				}
-				rf.matchIndex[rf.me] = rf.getLastLogIndex()
-				go rf.updateFollowersLog()
+				rf.startUpdateFollowersLog()
 				for i := range rf.peers {
 					if i != rf.me {
 						rf.nextIndex[i] = rf.getLastLogIndex() + 1
@@ -312,6 +317,7 @@ func (rf *Raft) changeRole() {
 					}
 				}
 			}
+			rf.state = role
 		}
 	}
 }
@@ -336,40 +342,49 @@ func (rf *Raft) checkApplied() {
 		case <-rf.killedCh:
 			return
 		case <-rf.checkAppliedCh:
-			if rf.commitIndex > rf.lastApplied {
-				log.Printf("server %v applied log %v", rf.me, rf.lastApplied)
+			rf.mu.Lock()
+			for ; rf.commitIndex > rf.lastApplied; {
+				rf.lastApplied++
 				appliedLog := rf.getLogByIndex(rf.lastApplied)
 				rf.applyCh <- ApplyMsg{
 					Command: appliedLog.Command,
 					CommandIndex: rf.lastApplied,
 					CommandValid: true,
 				}
-				rf.lastApplied++
-				rf.checkAppliedCh <- 1
+				log.Printf("server %v applied log %v", rf.me, rf.lastApplied)
 			}
+			rf.mu.Unlock()
 		}
 	}
 }
 
 func (rf *Raft) convertIndex(i int) int {
-	if i == 0 {
-		panic("Index can't be 0!")
-	}
-	if i > 0 {
-		return i - 1
+	if i >= 0 {
+		return i
 	} else {
-		return len(rf.log)-i
+		return len(rf.log)+i
 	}
 }
 
 func (rf *Raft) getLogByIndex(i int) LogEntry {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	mu := sync.Mutex{}
+	mu.Lock()
+	defer mu.Unlock()
 	return rf.log[rf.convertIndex(i)]
 }
 
 func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	return rf.log[rf.convertIndex(i):rf.convertIndex(j)]
+	mu := sync.Mutex{}
+	mu.Lock()
+	defer mu.Unlock()
+	ii := rf.convertIndex(i)
+	jj := rf.convertIndex(j)
+	if ii == jj {
+		return []LogEntry{rf.log[ii]}
+	} else if ii > jj {
+		log.Fatalf("%v < %v", ii, jj)
+		return []LogEntry{}
+	} else {
+		return rf.log[ii:jj]
+	}
 }
