@@ -9,7 +9,7 @@ package raft
 //
 
 import (
-	// "log"
+	"log"
 	"testing"
 	"fmt"
 	"time"
@@ -63,26 +63,31 @@ func TestReElection2A(t *testing.T) {
 	leader1 := cfg.checkOneLeader()
 
 	// if the leader disconnects, a new one should be elected.
+	// log.Printf("Disconnect %v", leader1)
 	cfg.disconnect(leader1)
 	cfg.checkOneLeader()
 
 	// if the old leader rejoins, that shouldn't
 	// disturb the new leader.
+	// log.Printf("Reconnect %v", leader1)
 	cfg.connect(leader1)
 	leader2 := cfg.checkOneLeader()
 
 	// if there's no quorum, no leader should
 	// be elected.
+	// log.Printf("Disconnect %v %v", leader2, (leader2 + 1) % servers)
 	cfg.disconnect(leader2)
 	cfg.disconnect((leader2 + 1) % servers)
 	time.Sleep(2 * RaftElectionTimeout)
 	cfg.checkNoLeader()
 
 	// if a quorum arises, it should elect a leader.
+	// log.Printf("Reconnect %v", (leader2 + 1) % servers)
 	cfg.connect((leader2 + 1) % servers)
 	cfg.checkOneLeader()
 
 	// re-join of last node shouldn't prevent leader from existing.
+	// log.Printf("Reconnect %v", leader2)
 	cfg.connect(leader2)
 	cfg.checkOneLeader()
 
@@ -158,6 +163,7 @@ func TestFailAgree2B(t *testing.T) {
 
 	// disconnect one follower from the network.
 	leader := cfg.checkOneLeader()
+	log.Printf("-----sr %v disconnect", (leader + 1) % servers)
 	cfg.disconnect((leader + 1) % servers)
 
 	// the leader and remaining follower should be
@@ -168,6 +174,7 @@ func TestFailAgree2B(t *testing.T) {
 	cfg.one(104, servers-1, false)
 	cfg.one(105, servers-1, false)
 
+	log.Printf("-----sr %v reconnect", (leader + 1) % servers)
 	// re-connect
 	cfg.connect((leader + 1) % servers)
 
@@ -195,6 +202,9 @@ func TestFailNoAgree2B(t *testing.T) {
 	cfg.disconnect((leader + 1) % servers)
 	cfg.disconnect((leader + 2) % servers)
 	cfg.disconnect((leader + 3) % servers)
+	log.Printf("---sr %v disconnect", (leader + 1) % servers)
+	log.Printf("---sr %v disconnect", (leader + 2) % servers)
+	log.Printf("---sr %v disconnect", (leader + 3) % servers)
 
 	index, _, ok := cfg.rafts[leader].Start(20)
 	if ok != true {
@@ -215,6 +225,9 @@ func TestFailNoAgree2B(t *testing.T) {
 	cfg.connect((leader + 1) % servers)
 	cfg.connect((leader + 2) % servers)
 	cfg.connect((leader + 3) % servers)
+	log.Printf("---sr %v reconnect", (leader + 1) % servers)
+	log.Printf("---sr %v reconnect", (leader + 2) % servers)
+	log.Printf("---sr %v reconnect", (leader + 3) % servers)
 
 	// the disconnected majority may have chosen a leader from
 	// among their own ranks, forgetting index 2.
@@ -341,10 +354,12 @@ func TestRejoin2B(t *testing.T) {
 	cfg.begin("Test (2B): rejoin of partitioned leader")
 
 	cfg.one(101, servers, true)
+	log.Printf("-----101 agree")
 
 	// leader network failure
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect(leader1)
+	log.Printf("-----leader %v disconnect", leader1)
 
 	// make old leader try to agree on some entries
 	cfg.rafts[leader1].Start(102)
@@ -353,20 +368,26 @@ func TestRejoin2B(t *testing.T) {
 
 	// new leader commits, also for index=2
 	cfg.one(103, 2, true)
+	log.Printf("-----103 agree")
 
 	// new leader network failure
 	leader2 := cfg.checkOneLeader()
 	cfg.disconnect(leader2)
+	log.Printf("-----leader %v disconnect", leader2)
 
 	// old leader connected again
 	cfg.connect(leader1)
+	log.Printf("-----leader %v reconnect", leader1)
 
 	cfg.one(104, 2, true)
+	log.Printf("-----104 agree")
 
 	// all together now
 	cfg.connect(leader2)
+	log.Printf("-----leader %v reconnect", leader2)
 
 	cfg.one(105, servers, true)
+	log.Printf("-----105 agree")
 
 	cfg.end()
 }

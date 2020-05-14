@@ -1,6 +1,7 @@
 package raft
 
 import (
+	// "sync"
 	"log"
 	"math/rand"
 	"time"
@@ -44,7 +45,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = args.CandidateId
 		rf.changeRoleCh <- follower
 	}
-	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.getLastLogIndex() <= args.LastLogIndex {
+	var upToDate bool
+	if rf.getLastLogTerm() < args.LastLogTerm {
+		upToDate = true
+	} else {
+		if rf.getLastLogIndex() <= args.LastLogIndex {
+			upToDate = true
+		} else {
+			upToDate = false
+		}
+	}
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && upToDate {
 		log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
 		reply.Term = args.Term
@@ -143,13 +154,13 @@ func (rf *Raft) startElection() {
 
 func (rf *Raft) tryWinElection() {
 	log.Printf("server %v try to win election", rf.me)
-	rf.stopChs["election"] = make(chan int)
+	rf.stopChElection = make(chan int)
 	go rf.startElection()
 	for {
 		select {
 		case <- rf.killedCh:
 			return
-		case <- rf.stopChs["election"]:
+		case <- rf.stopChElection:
 			return
 		case <- time.After(rf.getElectionTime()):
 			go rf.startElection()
