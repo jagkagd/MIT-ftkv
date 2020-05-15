@@ -72,6 +72,7 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
+	debug bool
 	killedCh chan int
 	state ServerState
 	currentTerm int
@@ -81,6 +82,8 @@ type Raft struct {
 	commitIndex int
 	lastApplied int
 	applyCh chan ApplyMsg
+	commandChs chan interface{}
+	startFinish chan int
 
 	nextIndex []int
 	matchIndex []int
@@ -181,25 +184,32 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	// Your code here (2B).
 	rf.mu.Lock()
-	index = rf.getLastLogIndex() + 1
 	term = rf.currentTerm
 	isLeader = rf.state == leader
 	rf.mu.Unlock()
 	if isLeader {
-		log.Printf("server %v gets Command %v", rf.me, command)
-		go func(index, term int, command interface{}) {
-			rf.mu.Lock()
-			rf.log = append(rf.log, LogEntry{
-				Command: command,
-				Term: term,
-			})
-			log.Printf("server %v log %v", rf.me, rf.log)
-			rf.matchIndex[rf.me] = rf.getLastLogIndex()
-			rf.mu.Unlock()
-			rf.triggerUpdateFollowers()
-		}(index, term, command)
+		rf.commandChs <- command
+		rf.broadCastHB(term)
+		<-rf.startFinish
+		defer rf.triggerUpdateFollowers()
+		index = rf.getLastLogIndex()
+		return index, term, isLeader
 	}
-	return index, term, isLeader
+	return rf.getLastLogIndex(), term, isLeader
+}
+
+func (rf *Raft) applyStart(term int) {
+	var command interface{}
+	for {
+		command = <-rf.commandChs
+		rf.log = append(rf.log, LogEntry{
+			Command: command,
+			Term: term,
+		})
+		rf.DPrintf("Start: sr %v gets %v index %v", rf.me, command, rf.getLastLogIndex())
+		rf.matchIndex[rf.me] = rf.getLastLogIndex()
+		rf.startFinish <- 1
+	}
 }
 
 //
@@ -242,7 +252,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.applyCh = applyCh
-	log.Printf("Make a raft server No %v.", rf.me)
+	rf.debug = false
+	// log.Printf("Make a raft server No %v.", rf.me)
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
@@ -282,30 +293,35 @@ func (rf *Raft) changeRole() {
 			return
 		case role = <-rf.changeRoleCh:
 			preRole := rf.state
-			log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
+			rf.DPrintf("server %v change role from %v to %v", rf.me, preRole, role)
 			if preRole == role {
 				continue
 			}
-			switch preRole {
-			case leader:
-				close(rf.stopChSendHB)
-				close(rf.stopChUpdateFollowers)
-				close(rf.stopChCommitUpdate)
-			}
-
 			switch role {
 			case follower:
 				switch preRole {
 				case candidate:
 					close(rf.stopChElection)
+				case leader:
+					close(rf.stopChSendHB)
+					close(rf.stopChUpdateFollowers)
+					close(rf.stopChCommitUpdate)
 				}
 				go rf.checkHeartBeats()
 			case candidate:
+				switch preRole {
+				case leader:
+					continue
+				}
 				go rf.tryWinElection()
 			case leader:
+				switch preRole {
+				case follower:
+					continue
+				}
 				close(rf.stopChCheckHB)
 				close(rf.stopChElection)
-				log.Printf("new leader %v log %v", rf.me, rf.log)
+				// log.Printf("new leader %v log %v", rf.me, rf.log)
 				go rf.sendHeartBeats(rf.currentTerm)
 				rf.checkCommitUpdateCh = make(chan int)
 				go rf.checkCommitUpdate()
@@ -323,6 +339,9 @@ func (rf *Raft) changeRole() {
 					}
 				}
 				rf.triggerUpdateFollowers()
+				rf.commandChs = make(chan interface{})
+				rf.startFinish = make(chan int)
+				go rf.applyStart(rf.currentTerm)
 			}
 			rf.state = role
 		}
@@ -350,16 +369,17 @@ func (rf *Raft) checkApplied() {
 			return
 		case <-rf.checkAppliedCh:
 			rf.mu.Lock()
-			log.Printf("server %v commitIndex %v lastApplied %v", rf.me, rf.commitIndex, rf.lastApplied)
+			// log.Printf("server %v commitIndex %v lastApplied %v", rf.me, rf.commitIndex, rf.lastApplied)
 			for ; rf.commitIndex > rf.lastApplied; {
 				rf.lastApplied++
 				appliedLog := rf.getLogByIndex(rf.lastApplied)
-				rf.applyCh <- ApplyMsg{
+				applyMsg := ApplyMsg{
 					Command: appliedLog.Command,
 					CommandIndex: rf.lastApplied,
 					CommandValid: true,
 				}
-				log.Printf("server %v applied log %v", rf.me, rf.lastApplied)
+				rf.applyCh <- applyMsg
+				// log.Printf("Apply: sr %v log %v", rf.me, applyMsg)
 			}
 			rf.mu.Unlock()
 		}

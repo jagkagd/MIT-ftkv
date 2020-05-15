@@ -2,7 +2,7 @@ package raft
 
 import (
 	"sync"
-	"log"
+	// "log"
 	"time"
 )
 
@@ -32,7 +32,7 @@ func (rf *Raft) makeHeartBeat(term int) AppendEntriesArgs {
 }
 
 func (rf *Raft) sendHeartBeats(term int) {
-	log.Printf("sr %v begins send HB", rf.me)
+	// log.Printf("sr %v begins send HB", rf.me)
 	rf.stopChSendHB = make(chan int)
 	go rf.broadCastHB(term)
 	for {
@@ -52,7 +52,7 @@ func (rf *Raft) getHBTime() time.Duration {
 }
 
 func (rf *Raft) broadCastHB(term int) {
-	log.Printf("sr %v send HB with match %v next %v", rf.me, rf.matchIndex, rf.nextIndex)
+	// log.Printf("sr %v send HB with match %v next %v", rf.me, rf.matchIndex, rf.nextIndex)
 	args := rf.makeHeartBeat(term)
 	for index := range rf.peers {
 		select {
@@ -77,7 +77,7 @@ func (rf *Raft) broadCastHB(term int) {
 // heartbeats: 100 ms
 // election time elapse: 300~500 ms
 func (rf *Raft) checkHeartBeats() {
-	log.Printf("sr %v start checkHB", rf.me)
+	// log.Printf("sr %v start checkHB", rf.me)
 	rf.stopChCheckHB = make(chan int)
 	for {
 		select {
@@ -89,10 +89,8 @@ func (rf *Raft) checkHeartBeats() {
 			// log.Printf("sr %v get HB", rf.me)
 			continue
 		case <-time.After(rf.getElectionTime()):
-			log.Printf("sr %v doesn't get HB", rf.me)
-			if rf.state != leader {
-				rf.changeRoleCh <- candidate
-			}
+			// log.Printf("sr %v doesn't get HB", rf.me)
+			rf.changeRoleCh <- candidate
 		}
 	}
 }
@@ -106,7 +104,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	log.Printf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
+	if len(args.Entries) > 0 {
+		rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
+	}
 
 	reply.Success = false
 	reply.Term = rf.currentTerm
@@ -115,32 +115,32 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	rf.heartBeatsCh <- 1
 	if args.Term > rf.currentTerm {
-		log.Printf("sr %v flag 2", rf.me)
+		// log.Printf("sr %v flag 2", rf.me)
 		rf.currentTerm = args.Term
 		rf.changeRoleCh <- follower
-		log.Printf("sr %v flag 2.1", rf.me)
+		// log.Printf("sr %v flag 2.1", rf.me)
 	}
 	if rf.getLastLogIndex() < args.PreLogIndex {
-		log.Printf("sr %v flag 3.1", rf.me)
+		// log.Printf("sr %v flag 3.1", rf.me)
 		return
 	}
 	if rf.getLogByIndex(args.PreLogIndex).Term != args.PreLogTerm {
-		log.Printf("sr %v flag 4", rf.me)
+		// log.Printf("sr %v flag 4", rf.me)
 		rf.log = rf.getLogByIndexRange(0, args.PreLogIndex)
-		log.Printf("sr %v flag 4.1", rf.me)
+		// log.Printf("sr %v flag 4.1", rf.me)
 		return
 	}
 	if len(args.Entries) > 0 && len(rf.log) > args.PreLogIndex {
-		log.Printf("sr %v flag 5", rf.me)
+		// log.Printf("sr %v flag 5", rf.me)
 		rf.log = rf.getLogByIndexRange(0, args.PreLogIndex + 1)
-		log.Printf("sr %v flag 5.1", rf.me)
+		// log.Printf("sr %v flag 5.1", rf.me)
 	}
-	log.Printf("sr %v flag 6", rf.me)
+	// log.Printf("sr %v flag 6", rf.me)
 	reply.Success = true
 	go func() {
 		rf.log = append(rf.log, args.Entries...)
 		if len(args.Entries) > 0 {
-			log.Printf("sr %v log %v", rf.me, rf.log)
+			// log.Printf("sr %v log %v", rf.me, rf.log)
 		}
 		// log.Printf("sr %v flag 6", rf.me)
 		if args.LeaderCommit > rf.commitIndex {
@@ -177,8 +177,8 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 			if rf.getLastLogIndex() >= rf.nextIndex[index] {
 				mu := sync.Mutex{}
 				mu.Lock()
-				log.Printf("leader %v next %v log %v", rf.me, rf.nextIndex, rf.log)
-				log.Printf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
+				// log.Printf("leader %v next %v log %v", rf.me, rf.nextIndex, rf.log)
+				rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
 				for {
 					select {
 					case <-rf.killedCh:
@@ -187,7 +187,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 						return
 					default:
 					}
-					log.Printf("leader %v nextIndex %v index %v", rf.me, rf.nextIndex, index)
+					// log.Printf("leader %v nextIndex %v index %v", rf.me, rf.nextIndex, index)
 					prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
 					args := AppendEntriesArgs{
 						Term: term,
@@ -200,8 +200,8 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					reply := AppendEntriesReply{}
 					ok := rf.peers[index].Call("Raft.AppendEntries", &args, &reply)
 					if !ok {
-						log.Printf("sr %v send %v to sr %v fail", rf.me, args, index)
-						log.Printf("rf.nextIndex %v", rf.nextIndex)
+						rf.DPrintf("sr %v send %v to sr %v fail", rf.me, args, index)
+						// log.Printf("rf.nextIndex %v", rf.nextIndex)
 						continue
 					}
 					if reply.Success {
@@ -216,29 +216,31 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					}
 				}
 				prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
+				lastLogIndex := rf.getLastLogIndex()
 				args := AppendEntriesArgs{
 					Term: term,
 					LeaderId: rf.me,
 					PreLogIndex: rf.nextIndex[index]-1,
 					PreLogTerm: prevLog.Term,
-					Entries: rf.getLogByIndexRange(rf.nextIndex[index], -0),
+					Entries: rf.getLogByIndexRange(rf.nextIndex[index], lastLogIndex+1),
 					LeaderCommit: rf.commitIndex,
 				}
 				reply := AppendEntriesReply{}
-				log.Printf("sr %v send update log to sr %v with %v", rf.me, index, args)
+				// log.Printf("sr %v send update log to sr %v with %v", rf.me, index, args)
 				ok := rf.peers[index].Call("Raft.AppendEntries", &args, &reply)
 				if !ok {
-					log.Printf("sr %v send %v to sr %v fail", rf.me, args, index)
+					// log.Printf("sr %v send %v to sr %v fail", rf.me, args, index)
+					continue
 				}
 				if reply.Success {
-					rf.nextIndex[index] = rf.getLastLogIndex() + 1
-					rf.matchIndex[index] = rf.getLastLogIndex()
+					rf.nextIndex[index] = lastLogIndex + 1
+					rf.matchIndex[index] = lastLogIndex
 					rf.checkCommitUpdateCh <- 1
 				} else {
 					panic("something wrong")
 				}
 				mu.Unlock()
-				log.Printf("sr %v update %v finish", rf.me, index)
+				// log.Printf("sr %v update %v finish", rf.me, index)
 			}
 		}
 	}
@@ -253,7 +255,7 @@ func (rf *Raft) checkCommitUpdate() {
 		case <-rf.stopChCommitUpdate:
 			return
 		case <-rf.checkCommitUpdateCh:
-			log.Printf("Check Commit Update with commitIndex %v, match %v", rf.commitIndex, rf.matchIndex)
+			rf.DPrintf("sr %v check commit update commitIndex %v, match %v", rf.me, rf.commitIndex, rf.matchIndex)
 			rf.mu.Lock()
 			var i int
 			for i = rf.getLastLogIndex(); i > rf.commitIndex; i-- {
@@ -267,7 +269,7 @@ func (rf *Raft) checkCommitUpdate() {
 					break
 				}
 			}
-			log.Printf("new commitIndex %v", i)
+			// log.Printf("new commitIndex %v", i)
 			rf.commitIndex = i
 			go rf.broadCastHB(rf.currentTerm)
 			rf.mu.Unlock()

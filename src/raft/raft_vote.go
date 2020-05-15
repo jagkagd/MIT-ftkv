@@ -2,7 +2,7 @@ package raft
 
 import (
 	// "sync"
-	"log"
+	// "log"
 	"math/rand"
 	"time"
 	// "../labrpc"
@@ -31,13 +31,13 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	log.Printf("server %v receives request vote from server %v", rf.me, args.CandidateId)
+	rf.DPrintf("Request Vote %v to %v log %v", *args, rf.me, rf.log)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		log.Printf("server %v return false for args.Term %v < rf.currentTerm %v", rf.me, args.Term, rf.currentTerm)
+		// log.Printf("server %v return false for args.Term %v < rf.currentTerm %v", rf.me, args.Term, rf.currentTerm)
 		return
 	}
 	if rf.currentTerm < args.Term {
@@ -46,26 +46,31 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.changeRoleCh <- follower
 	}
 	var upToDate bool
-	if rf.getLastLogTerm() < args.LastLogTerm {
+	termDiff := rf.getLastLogTerm() - args.LastLogTerm
+	switch {
+	case termDiff < 0:
 		upToDate = true
-	} else {
-		if rf.getLastLogIndex() <= args.LastLogIndex {
+	case termDiff == 0:
+		switch rf.getLastLogIndex() <= args.LastLogIndex {
+		case true:
 			upToDate = true
-		} else {
+		case false:
 			upToDate = false
 		}
+	case termDiff > 0:
+		upToDate = false
 	}
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && upToDate {
-		log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
+		// log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
 		reply.Term = args.Term
-		log.Printf("server %v voted %v", rf.me, args.CandidateId)
+		// log.Printf("server %v voted %v", rf.me, args.CandidateId)
 		reply.VoteGranted = true
 		return
 	}
 	reply.Term = args.Term
 	reply.VoteGranted = false
-	log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
+	// log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
 	return
 }
 
@@ -110,8 +115,9 @@ func (rf *Raft) getElectionTime() time.Duration {
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	rf.currentTerm++
+	term := rf.currentTerm
 	rf.votedFor = rf.me
-	log.Printf("server %v start a election with term %v", rf.me, rf.currentTerm)
+	// log.Printf("server %v start a election with term %v", rf.me, rf.currentTerm)
 	args := RequestVoteArgs{
 		Term: rf.currentTerm,
 		CandidateId: rf.me,
@@ -126,8 +132,10 @@ func (rf *Raft) startElection() {
 		for range votesCh {
 			getVotes++
 			if getVotes > len(rf.peers)/2 {
-				rf.changeRoleCh <- leader
-				close(stopCh)
+				if term == rf.currentTerm {
+					rf.changeRoleCh <- leader
+					close(stopCh)
+				}
 				return
 			}
 		}
@@ -137,15 +145,31 @@ func (rf *Raft) startElection() {
 		if index != rf.me {
 			go func(index int) {
 				reply := RequestVoteReply{}
-				rf.sendRequestVote(index, &args, &reply)
-				if reply.VoteGranted {
+				for {
+					if term < rf.currentTerm {
+						return
+					}
 					select {
-					case <-stopCh:
+					case <- stopCh:
 						return
 					default:
 					}
-					log.Printf("server %v receives vote from server %v", rf.me, index)
-					votesCh <- 1
+					ok := rf.sendRequestVote(index, &args, &reply)
+					if !ok {
+						rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
+						continue
+					}
+					rf.DPrintf("sr %v from %v get reply RV %v", rf.me, index, reply)
+					if reply.VoteGranted {
+						select {
+						case <-stopCh:
+							return
+						default:
+						}
+						// log.Printf("server %v receives vote from server %v", rf.me, index)
+						votesCh <- 1
+						return
+					}
 				}
 			}(index)
 		}
@@ -153,7 +177,7 @@ func (rf *Raft) startElection() {
 }
 
 func (rf *Raft) tryWinElection() {
-	log.Printf("server %v try to win election", rf.me)
+	// log.Printf("server %v try to win election", rf.me)
 	rf.stopChElection = make(chan int)
 	go rf.startElection()
 	for {
