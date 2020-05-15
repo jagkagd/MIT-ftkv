@@ -144,7 +144,6 @@ func (rf *Raft) startElection() {
 	for index := range rf.peers {
 		if index != rf.me {
 			go func(index int) {
-				reply := RequestVoteReply{}
 				for {
 					if term < rf.currentTerm {
 						return
@@ -154,6 +153,7 @@ func (rf *Raft) startElection() {
 						return
 					default:
 					}
+					reply := RequestVoteReply{}
 					ok := rf.sendRequestVote(index, &args, &reply)
 					if !ok {
 						rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
@@ -168,8 +168,8 @@ func (rf *Raft) startElection() {
 						}
 						// log.Printf("server %v receives vote from server %v", rf.me, index)
 						votesCh <- 1
-						return
 					}
+					return
 				}
 			}(index)
 		}
