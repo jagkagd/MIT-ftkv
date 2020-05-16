@@ -370,6 +370,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
+		// log.Printf("sr %v index %v log %v", i, index, cfg.logs[i])
 		cfg.mu.Unlock()
 
 		if ok {
@@ -408,6 +409,7 @@ func (cfg *config) wait(index int, n int, startTerm int) interface{} {
 		}
 	}
 	nd, cmd := cfg.nCommitted(index)
+	// log.Printf("nd %v cmd %v", nd, cmd)
 	if nd < n {
 		cfg.t.Fatalf("only %d decided for index %d; wanted %d\n",
 			nd, index, n)

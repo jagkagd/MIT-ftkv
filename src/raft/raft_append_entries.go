@@ -31,18 +31,41 @@ func (rf *Raft) makeHeartBeat(term int) AppendEntriesArgs {
 	}
 }
 
-func (rf *Raft) sendHeartBeats(term int) {
+func (rf *Raft) broadcastHeartBeats(term int) {
 	// log.Printf("sr %v begins send HB", rf.me)
-	rf.stopChSendHB = make(chan int)
-	go rf.broadCastHB(term)
-	for {
+	for index := range rf.peers {
 		select {
 		case <-rf.killedCh:
 			return
 		case <-rf.stopChSendHB:
 			return
-		case <-time.After(rf.getHBTime()):
-			go rf.broadCastHB(term)
+		default:
+		}
+		if index != rf.me {
+			go rf.broadcastHB(term, index)
+		}
+	}
+}
+
+func (rf *Raft) broadcastHB(term, index int)  {
+	go rf.sendHB(term, index)
+	timer := time.NewTimer(rf.getHBTime())
+	defer timer.Stop()
+	for {
+		timer.Reset(rf.getHBTime())
+		select {
+		case <-rf.killedCh:
+			return
+		case <-rf.stopChSendHB:
+			return
+		case <-timer.C:
+			select {
+			case <-rf.sendHBCh[index]:
+				continue
+			default:
+			}
+			// log.Printf("term %v index %v %v", term, index, i)
+			go rf.sendHB(term, index)
 		}
 	}
 }
@@ -51,26 +74,14 @@ func (rf *Raft) getHBTime() time.Duration {
 	return time.Millisecond*(time.Duration)(rf.heartBeatTime)
 }
 
-func (rf *Raft) broadCastHB(term int) {
-	// log.Printf("sr %v send HB with match %v next %v", rf.me, rf.matchIndex, rf.nextIndex)
+func (rf *Raft) sendHB(term, index int) {
+	// log.Printf("sr %v send HB to %v", rf.me, index)
 	args := rf.makeHeartBeat(term)
-	for index := range rf.peers {
-		select {
-		case <-rf.stopChSendHB:
-			return
-		default:
-		}
-		if index != rf.me {
-			go func(index int) {
-				reply := AppendEntriesReply{}
-				// log.Printf("sr %v send HB to %v index", rf.me, index)
-				rf.sendAppendEntries(index, &args, &reply)
-				if reply.Term > term {
-					rf.changeRoleCh <- follower
-					rf.currentTerm = reply.Term
-				}
-			}(index)
-		}
+	reply := AppendEntriesReply{}
+	rf.sendAppendEntries(index, &args, &reply)
+	if reply.Term > term {
+		rf.changeRoleCh <- follower
+		rf.currentTerm = reply.Term
 	}
 }
 
@@ -78,8 +89,10 @@ func (rf *Raft) broadCastHB(term int) {
 // election time elapse: 300~500 ms
 func (rf *Raft) checkHeartBeats() {
 	// log.Printf("sr %v start checkHB", rf.me)
-	rf.stopChCheckHB = make(chan int)
+	timer := time.NewTimer(rf.getElectionTime())
+	defer timer.Stop()
 	for {
+		timer.Reset(rf.getElectionTime())
 		select {
 		case <-rf.killedCh:
 			return
@@ -88,7 +101,7 @@ func (rf *Raft) checkHeartBeats() {
 		case <-rf.heartBeatsCh:
 			// log.Printf("sr %v get HB", rf.me)
 			continue
-		case <-time.After(rf.getElectionTime()):
+		case <-timer.C:
 			// log.Printf("sr %v doesn't get HB", rf.me)
 			rf.changeRoleCh <- candidate
 		}
@@ -104,9 +117,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	if len(args.Entries) > 0 {
-		rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
-	}
+	// if len(args.Entries) > 0 {
+	// log.Printf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
+	// }
 
 	reply.Success = false
 	reply.Term = rf.currentTerm
@@ -140,7 +153,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	go func() {
 		rf.log = append(rf.log, args.Entries...)
 		if len(args.Entries) > 0 {
-			// log.Printf("sr %v log %v", rf.me, rf.log)
+			// log.Printf("sr %v log %v leaderCommit %v commitIndex %v", rf.me, rf.log, args.LeaderCommit, rf.commitIndex)
 		}
 		// log.Printf("sr %v flag 6", rf.me)
 		if args.LeaderCommit > rf.commitIndex {
@@ -158,7 +171,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) startUpdateFollowersLog(term int) {
-	rf.stopChUpdateFollowers = make(chan int)
 	for index := range rf.peers {
 		if index != rf.me {
 			go rf.updateFollowerLog(index, term)
@@ -178,7 +190,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				mu := sync.Mutex{}
 				mu.Lock()
 				// log.Printf("leader %v next %v log %v", rf.me, rf.nextIndex, rf.log)
-				rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
+				// rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
 				for {
 					select {
 					case <-rf.killedCh:
@@ -187,7 +199,6 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 						return
 					default:
 					}
-					// log.Printf("leader %v nextIndex %v index %v", rf.me, rf.nextIndex, index)
 					prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
 					args := AppendEntriesArgs{
 						Term: term,
@@ -198,7 +209,10 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 						LeaderCommit: rf.commitIndex,
 					}
 					reply := AppendEntriesReply{}
+					// log.Printf("sr %v send check to %v", rf.me, index)
+					rf.sendHBCh[index] <- 1
 					ok := rf.peers[index].Call("Raft.AppendEntries", &args, &reply)
+					// log.Printf("sr %v send check to %v 2", rf.me, index)
 					if !ok {
 						rf.DPrintf("sr %v send %v to sr %v fail", rf.me, args, index)
 						// log.Printf("rf.nextIndex %v", rf.nextIndex)
@@ -227,7 +241,10 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				}
 				reply := AppendEntriesReply{}
 				// log.Printf("sr %v send update log to sr %v with %v", rf.me, index, args)
+				// log.Printf("sr %v send check to %v 3", rf.me, index)
+				rf.sendHBCh[index] <- 1
 				ok := rf.peers[index].Call("Raft.AppendEntries", &args, &reply)
+				// log.Printf("sr %v send check to %v 4", rf.me, index)
 				if !ok {
 					// log.Printf("sr %v send %v to sr %v fail", rf.me, args, index)
 					continue
@@ -247,7 +264,6 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 }
 
 func (rf *Raft) checkCommitUpdate() {
-	rf.stopChCommitUpdate = make(chan int)
 	for {
 		select {
 		case <-rf.killedCh:
@@ -271,7 +287,8 @@ func (rf *Raft) checkCommitUpdate() {
 			}
 			// log.Printf("new commitIndex %v", i)
 			rf.commitIndex = i
-			go rf.broadCastHB(rf.currentTerm)
+			rf.triggerHB(rf.currentTerm)
+			// go rf.broadcastHeartBeats(rf.currentTerm)
 			rf.mu.Unlock()
 			rf.checkAppliedCh <- 1
 		}
@@ -285,6 +302,14 @@ func (rf *Raft) triggerUpdateFollowers() {
 				rf.updateFollowerLogCh[i] <- 1
 				// log.Printf("sr %v trigger %v", rf.me, i)
 			}(i)
+		}
+	}
+}
+
+func (rf *Raft) triggerHB(term int) {
+	for i := range rf.peers {
+		if i != rf.me {
+			go rf.sendHB(term, i)
 		}
 	}
 }

@@ -88,12 +88,15 @@ type Raft struct {
 	nextIndex []int
 	matchIndex []int
 	updateFollowerLogCh [](chan int)
+	nextIndexCh [](chan int)
+	nextIndexMatchCh [](chan bool)
 
 	electionTimeRange []int
 	heartBeatTime int
 
 	changeRoleCh chan ServerState
 	heartBeatsCh chan int
+	sendHBCh [](chan int)
 	checkAppliedCh chan int
 	checkCommitUpdateCh chan int
 	stopChCheckHB chan int
@@ -189,10 +192,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Unlock()
 	if isLeader {
 		rf.commandChs <- command
-		rf.broadCastHB(term)
-		<-rf.startFinish
-		defer rf.triggerUpdateFollowers()
-		index = rf.getLastLogIndex()
+		rf.triggerHB(term)
+		index = <-rf.startFinish
 		return index, term, isLeader
 	}
 	return rf.getLastLogIndex(), term, isLeader
@@ -206,9 +207,11 @@ func (rf *Raft) applyStart(term int) {
 			Command: command,
 			Term: term,
 		})
-		rf.DPrintf("Start: sr %v gets %v index %v", rf.me, command, rf.getLastLogIndex())
-		rf.matchIndex[rf.me] = rf.getLastLogIndex()
-		rf.startFinish <- 1
+		lastLogIndex := rf.getLastLogIndex()
+		rf.matchIndex[rf.me] = lastLogIndex
+		// log.Printf("Start: sr %v gets %v index %v log %v", rf.me, command, rf.getLastLogIndex(), rf.log)
+		rf.triggerUpdateFollowers()
+		rf.startFinish <- lastLogIndex
 	}
 }
 
@@ -293,7 +296,7 @@ func (rf *Raft) changeRole() {
 			return
 		case role = <-rf.changeRoleCh:
 			preRole := rf.state
-			rf.DPrintf("server %v change role from %v to %v", rf.me, preRole, role)
+			// log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
 			if preRole == role {
 				continue
 			}
@@ -307,12 +310,14 @@ func (rf *Raft) changeRole() {
 					close(rf.stopChUpdateFollowers)
 					close(rf.stopChCommitUpdate)
 				}
+				rf.stopChCheckHB = make(chan int)
 				go rf.checkHeartBeats()
 			case candidate:
 				switch preRole {
 				case leader:
 					continue
 				}
+				rf.stopChElection = make(chan int)
 				go rf.tryWinElection()
 			case leader:
 				switch preRole {
@@ -322,16 +327,27 @@ func (rf *Raft) changeRole() {
 				close(rf.stopChCheckHB)
 				close(rf.stopChElection)
 				// log.Printf("new leader %v log %v", rf.me, rf.log)
-				go rf.sendHeartBeats(rf.currentTerm)
+				rf.stopChSendHB = make(chan int)
+				rf.sendHBCh = make([](chan int), len(rf.peers))
+				for i := range rf.peers {
+					rf.sendHBCh[i] = make(chan int)
+				}
+				rf.broadcastHeartBeats(rf.currentTerm)
 				rf.checkCommitUpdateCh = make(chan int)
+				rf.stopChCommitUpdate = make(chan int)
 				go rf.checkCommitUpdate()
 				rf.nextIndex = make([]int, len(rf.peers))
 				rf.matchIndex = make([]int, len(rf.peers))
 				rf.matchIndex[rf.me] = rf.getLastLogIndex()
 				rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
+				rf.nextIndexCh = make([](chan int), len(rf.peers))
+				rf.nextIndexMatchCh = make([](chan bool), len(rf.peers))
 				for i := range rf.peers {
 					rf.updateFollowerLogCh[i] = make(chan int)
+					rf.nextIndexCh[i] = make(chan int)
+					rf.nextIndexMatchCh[i] = make(chan bool)
 				}
+				rf.stopChUpdateFollowers = make(chan int)
 				rf.startUpdateFollowersLog(rf.currentTerm)
 				for i := range rf.peers {
 					if i != rf.me {

@@ -178,7 +178,6 @@ func (rf *Raft) startElection() {
 
 func (rf *Raft) tryWinElection() {
 	// log.Printf("server %v try to win election", rf.me)
-	rf.stopChElection = make(chan int)
 	go rf.startElection()
 	for {
 		select {

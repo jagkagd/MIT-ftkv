@@ -9,7 +9,7 @@ package raft
 //
 
 import (
-	// "log"
+	"log"
 	"testing"
 	"fmt"
 	"time"
@@ -298,7 +298,9 @@ loop:
 		failed := false
 		cmds := []int{}
 		for index := range is {
+			// log.Printf("index %v", index)
 			cmd := cfg.wait(index, servers, term)
+			// log.Printf("cmd %v", cmd)
 			if ix, ok := cmd.(int); ok {
 				if ix == -1 {
 					// peers have moved on to later terms
@@ -413,7 +415,8 @@ func TestBackup2B(t *testing.T) {
 	// submit lots of commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
-		// cfg.rafts[leader1].Start(i)
+	// for i := 0; i < 3; i++ {
+	// 	cfg.rafts[leader1].Start(i)
 	}
 	// log.Printf("----- leader %v 0-49 submit", leader1)
 
@@ -432,6 +435,7 @@ func TestBackup2B(t *testing.T) {
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
+	// for i := 0; i < 3; i++ {
 		// cfg.one(i+50, 3, true)
 	}
 	// log.Printf("----- 50-99 agree")
@@ -448,6 +452,7 @@ func TestBackup2B(t *testing.T) {
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader2].Start(rand.Int())
+	// for i := 0; i < 3; i++ {
 		// cfg.rafts[leader2].Start(i+100)
 	}
 	// log.Printf("----- leader %v 100-149 submit", leader2)
@@ -467,6 +472,7 @@ func TestBackup2B(t *testing.T) {
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
+	// for i := 0; i < 3; i++ {
 		// cfg.one(i+150, 3, true)
 	}
 	// log.Printf("----- 150-199 agree")
@@ -474,10 +480,11 @@ func TestBackup2B(t *testing.T) {
 	// now everyone
 	for i := 0; i < servers; i++ {
 		cfg.connect(i)
-		// cfg.rafts[i].debug = true
+		// cfg.rafts[i].debug = false
 		// log.Printf("----- %v reconnect with term %v", i, cfg.rafts[i].currentTerm)
 	}
 	cfg.one(rand.Int(), servers, true)
+	// cfg.one(200, servers, true)
 	// log.Printf("----- 200 agree")
 
 	cfg.end()
@@ -507,6 +514,7 @@ func TestCount2B(t *testing.T) {
 
 	var total2 int
 	var success bool
+	log.Printf("-----")
 loop:
 	for try := 0; try < 5; try++ {
 		if try > 0 {
@@ -525,7 +533,8 @@ loop:
 		}
 		cmds := []int{}
 		for i := 1; i < iters+2; i++ {
-			x := int(rand.Int31())
+			// x := int(rand.Int31())
+			x := 100*try+i
 			cmds = append(cmds, x)
 			index1, term1, ok := cfg.rafts[leader].Start(x)
 			if term1 != term {
