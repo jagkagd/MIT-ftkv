@@ -43,7 +43,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	if rf.currentTerm < args.Term {
 		rf.currentTerm = args.Term
-		rf.votedFor = args.CandidateId
+		rf.votedFor = -1
 		rf.changeRoleCh <- follower
 		rf.persist()
 	}
@@ -60,13 +60,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && upToDate {
 		// log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
-		rf.persist()
-		reply.Term = args.Term
+		reply.Term = rf.currentTerm
 		// log.Printf("server %v voted %v", rf.me, args.CandidateId)
 		reply.VoteGranted = true
+		rf.heartBeatsCh <- 1
+		rf.persist()
 		return
 	}
-	reply.Term = args.Term
+	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 	rf.persist()
 	// log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
@@ -112,6 +113,7 @@ func (rf *Raft) getElectionTime() time.Duration {
 }
 
 func (rf *Raft) startElection() {
+	rf.heartBeatsCh <- 1
 	rf.mu.Lock()
 	rf.currentTerm++
 	term := rf.currentTerm
@@ -174,11 +176,11 @@ func (rf *Raft) startElection() {
 					default:
 					}
 					reply := RequestVoteReply{}
-					ok := rf.sendRequestVote(index, &args, &reply)
-					if !ok {
-						// rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
-						continue
-					}
+					rf.sendRequestVote(index, &args, &reply)
+					// if !ok {
+					// 	// rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
+					// 	continue
+					// }
 					if term != rf.currentTerm {
 						return
 					}

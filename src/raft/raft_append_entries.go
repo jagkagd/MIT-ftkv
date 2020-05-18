@@ -130,14 +130,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 	// rf.DPrintf("sr %v rec HB", rf.me)
-	rf.heartBeatsCh <- 1
 	// rf.DPrintf("sr %v rec HB2", rf.me)
 	if args.Term > rf.currentTerm {
 		// log.Printf("sr %v flag 2", rf.me)
 		rf.currentTerm = args.Term
+		rf.votedFor = -1
+		if rf.state != leader {
+			rf.heartBeatsCh <- 1
+		}
 		rf.changeRoleCh <- follower
 		// log.Printf("sr %v flag 2.1", rf.me)
 	}
+	rf.heartBeatsCh <- 1
 	if rf.getLastLogIndex() < args.PreLogIndex {
 		// log.Printf("sr %v flag 3.1", rf.me)
 		rf.persist()
@@ -228,8 +232,9 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					if term != rf.currentTerm {
 						return
 					}
-					if reply.Term > term {
+					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
+						rf.votedFor = -1
 						rf.changeRoleCh <- follower
 						rf.persist()
 						return
@@ -264,6 +269,13 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					continue
 				}
 				if term != rf.currentTerm {
+					return
+				}
+				if reply.Term > rf.currentTerm {
+					rf.currentTerm = reply.Term
+					rf.votedFor = -1
+					rf.changeRoleCh <- follower
+					rf.persist()
 					return
 				}
 				if reply.Success {
