@@ -416,7 +416,7 @@ func TestBackup2B(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
 	// for i := 0; i < 3; i++ {
-	// 	cfg.rafts[leader1].Start(i)
+		// cfg.rafts[leader1].Start(i)
 	}
 	// log.Printf("----- leader %v 0-49 submit", leader1)
 
@@ -467,6 +467,9 @@ func TestBackup2B(t *testing.T) {
 	cfg.connect((leader1 + 0) % servers)
 	cfg.connect((leader1 + 1) % servers)
 	cfg.connect(other)
+	// for i := 0; i < servers; i++ {
+		// cfg.rafts[i].debug = true
+	// }
 	// log.Printf("----- %v %v %v reconnect", (leader1 + 0) % servers, (leader1 + 1) % servers, other)
 
 	// lots of successful commands to new group.
@@ -480,7 +483,7 @@ func TestBackup2B(t *testing.T) {
 	// now everyone
 	for i := 0; i < servers; i++ {
 		cfg.connect(i)
-		// cfg.rafts[i].debug = false
+		// cfg.rafts[i].debug = true
 		// log.Printf("----- %v reconnect with term %v", i, cfg.rafts[i].currentTerm)
 	}
 	cfg.one(rand.Int(), servers, true)

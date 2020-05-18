@@ -109,13 +109,14 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 }
 
 func (rf *Raft) getElectionTime() time.Duration {
-	return time.Millisecond*(time.Duration)(rf.electionTimeRange[0]+rand.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return time.Millisecond*(time.Duration)(rf.electionTimeRange[0]+r.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
 }
 
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	rf.currentTerm++
-	term := rf.currentTerm
+	// term := rf.currentTerm
 	rf.votedFor = rf.me
 	// log.Printf("server %v start a election with term %v", rf.me, rf.currentTerm)
 	args := RequestVoteArgs{
@@ -130,33 +131,53 @@ func (rf *Raft) startElection() {
 	getVotes := 0
 	go func() {
 		for range votesCh {
+			select {
+			case <-rf.stopChElection:
+				close(stopCh)
+				return
+			default:
+			}
 			getVotes++
 			if getVotes > len(rf.peers)/2 {
-				if term == rf.currentTerm {
-					rf.changeRoleCh <- leader
-					close(stopCh)
-				}
+				close(stopCh)
+				rf.changeRoleCh <- leader
 				return
 			}
 		}
 	}()
 	votesCh <- 1
 	for index := range rf.peers {
+		// if term < rf.currentTerm {
+		// 	return
+		// }
+		select {
+		case <- stopCh:
+			return
+		case <- rf.killedCh:
+			return
+		case <- rf.stopChElection:
+			return
+		default:
+		}
 		if index != rf.me {
 			go func(index int) {
 				for {
-					if term < rf.currentTerm {
-						return
-					}
+					// if term < rf.currentTerm {
+					// 	return
+					// }
 					select {
 					case <- stopCh:
+						return
+					case <- rf.killedCh:
+						return
+					case <- rf.stopChElection:
 						return
 					default:
 					}
 					reply := RequestVoteReply{}
 					ok := rf.sendRequestVote(index, &args, &reply)
 					if !ok {
-						rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
+						// rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
 						continue
 					}
 					rf.DPrintf("sr %v from %v get reply RV %v", rf.me, index, reply)
@@ -179,13 +200,16 @@ func (rf *Raft) startElection() {
 func (rf *Raft) tryWinElection() {
 	// log.Printf("server %v try to win election", rf.me)
 	go rf.startElection()
+	timer := time.NewTimer(rf.getElectionTime())
+	defer timer.Stop()
 	for {
+		timer.Reset(rf.getElectionTime())
 		select {
 		case <- rf.killedCh:
 			return
 		case <- rf.stopChElection:
 			return
-		case <- time.After(rf.getElectionTime()):
+		case <- timer.C:
 			go rf.startElection()
 		}
 	}

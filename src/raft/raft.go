@@ -18,7 +18,7 @@ package raft
 //
 
 import (
-	"log"
+	// "log"
 	"sync"
 	"sync/atomic"
 	"../labrpc"
@@ -88,8 +88,6 @@ type Raft struct {
 	nextIndex []int
 	matchIndex []int
 	updateFollowerLogCh [](chan int)
-	nextIndexCh [](chan int)
-	nextIndexMatchCh [](chan bool)
 
 	electionTimeRange []int
 	heartBeatTime int
@@ -209,7 +207,7 @@ func (rf *Raft) applyStart(term int) {
 		})
 		lastLogIndex := rf.getLastLogIndex()
 		rf.matchIndex[rf.me] = lastLogIndex
-		// log.Printf("Start: sr %v gets %v index %v log %v", rf.me, command, rf.getLastLogIndex(), rf.log)
+		rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, rf.getLastLogIndex(), rf.log)
 		rf.triggerUpdateFollowers()
 		rf.startFinish <- lastLogIndex
 	}
@@ -265,8 +263,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		Term: 0,
 		Command: struct{}{},
 	}}
-	rf.electionTimeRange = []int{400, 600}
-	rf.heartBeatTime = 120
+	rf.electionTimeRange = []int{500, 600}
+	rf.heartBeatTime = 110
 
 	rf.stopChCheckHB = make(chan int)
 	rf.stopChElection = make(chan int)
@@ -296,7 +294,7 @@ func (rf *Raft) changeRole() {
 			return
 		case role = <-rf.changeRoleCh:
 			preRole := rf.state
-			// log.Printf("server %v change role from %v to %v", rf.me, preRole, role)
+			rf.DPrintf("server %v change role from %v to %v", rf.me, preRole, role)
 			if preRole == role {
 				continue
 			}
@@ -340,12 +338,8 @@ func (rf *Raft) changeRole() {
 				rf.matchIndex = make([]int, len(rf.peers))
 				rf.matchIndex[rf.me] = rf.getLastLogIndex()
 				rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
-				rf.nextIndexCh = make([](chan int), len(rf.peers))
-				rf.nextIndexMatchCh = make([](chan bool), len(rf.peers))
 				for i := range rf.peers {
 					rf.updateFollowerLogCh[i] = make(chan int)
-					rf.nextIndexCh[i] = make(chan int)
-					rf.nextIndexMatchCh[i] = make(chan bool)
 				}
 				rf.stopChUpdateFollowers = make(chan int)
 				rf.startUpdateFollowersLog(rf.currentTerm)
@@ -427,7 +421,7 @@ func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
 	} else if jj == -0 {
 		return rf.log[ii:]
 	} else if ii > jj {
-		log.Fatalf("%v < %v", ii, jj)
+		panic("wrong index")
 		return []LogEntry{}
 	} else {
 		return rf.log[ii:jj]
