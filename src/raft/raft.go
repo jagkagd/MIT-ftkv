@@ -18,14 +18,17 @@ package raft
 //
 
 import (
-	// "log"
+	"time"
+	"math/rand"
+	"bytes"
+	"log"
 	"sync"
 	"sync/atomic"
 	"../labrpc"
 )
 
 // import "bytes"
-// import "../labgob"
+import "../labgob"
 
 
 
@@ -124,12 +127,14 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	// log.Printf("sr %v persist %v %v %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 
@@ -137,22 +142,31 @@ func (rf *Raft) persist() {
 // restore previously persisted state.
 //
 func (rf *Raft) readPersist(data []byte) {
+	// log.Printf("data %v", data)
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil {
+		log.Fatalf("Read currentTerm error")
+	}
+	if d.Decode(&votedFor) != nil {
+		log.Fatalf("Read votedFor error")
+	}
+	// log.Printf("term %v votedFor %v", currentTerm, votedFor)
+	if d.Decode(&logs) != nil {
+		log.Fatalf("Read logs error")
+	}
+	rf.currentTerm = currentTerm
+	rf.votedFor = votedFor
+	rf.log = logs
+	// log.Printf("Read persist success")
 }
 
 
@@ -208,6 +222,7 @@ func (rf *Raft) applyStart(term int) {
 		lastLogIndex := rf.getLastLogIndex()
 		rf.matchIndex[rf.me] = lastLogIndex
 		rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, rf.getLastLogIndex(), rf.log)
+		rf.persist()
 		rf.triggerUpdateFollowers()
 		rf.startFinish <- lastLogIndex
 	}
@@ -261,10 +276,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.votedFor = -1
 	rf.log = []LogEntry{LogEntry{
 		Term: 0,
-		Command: struct{}{},
+		Command: 0,
 	}}
-	rf.electionTimeRange = []int{500, 600}
-	rf.heartBeatTime = 110
+	rf.readPersist(persister.ReadRaftState())
+	rf.electionTimeRange = []int{300, 500}
+	rf.heartBeatTime = 50
 
 	rf.stopChCheckHB = make(chan int)
 	rf.stopChElection = make(chan int)
@@ -281,7 +297,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.changeRoleCh <- follower
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
 
 	return rf
 }
@@ -294,7 +309,7 @@ func (rf *Raft) changeRole() {
 			return
 		case role = <-rf.changeRoleCh:
 			preRole := rf.state
-			rf.DPrintf("server %v change role from %v to %v", rf.me, preRole, role)
+			rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
 			if preRole == role {
 				continue
 			}
@@ -308,6 +323,7 @@ func (rf *Raft) changeRole() {
 					close(rf.stopChUpdateFollowers)
 					close(rf.stopChCommitUpdate)
 				}
+				rand.Seed(time.Now().UnixNano())
 				rf.stopChCheckHB = make(chan int)
 				go rf.checkHeartBeats()
 			case candidate:
@@ -315,6 +331,7 @@ func (rf *Raft) changeRole() {
 				case leader:
 					continue
 				}
+				rand.Seed(time.Now().UnixNano())
 				rf.stopChElection = make(chan int)
 				go rf.tryWinElection()
 			case leader:
@@ -354,6 +371,7 @@ func (rf *Raft) changeRole() {
 				go rf.applyStart(rf.currentTerm)
 			}
 			rf.state = role
+			rf.DPrintf("server %v change role from %v to %v finish", rf.me, preRole, role)
 		}
 	}
 }

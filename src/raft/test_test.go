@@ -394,6 +394,94 @@ func TestRejoin2B(t *testing.T) {
 	cfg.end()
 }
 
+func TestSimpleBackup(t *testing.T) {
+	servers := 5
+	cfg := make_config(t, servers, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (2B): leader backs up quickly over incorrect follower logs")
+
+	cfg.one(-1, servers, true)
+	log.Printf("----- -1 agree")
+
+	// put leader and one follower in a partition
+	leader1 := cfg.checkOneLeader()
+	cfg.disconnect((leader1 + 2) % servers)
+	cfg.disconnect((leader1 + 3) % servers)
+	cfg.disconnect((leader1 + 4) % servers)
+	log.Printf("----- %v %v %v disconnect", (leader1 + 2) % servers, (leader1 + 3) % servers, (leader1 + 4) % servers)
+
+	// submit lots of commands that won't commit
+	for i := 0; i < 3; i++ {
+		cfg.rafts[leader1].Start(i)
+	}
+	log.Printf("----- leader %v 0-49 submit", leader1)
+
+	time.Sleep(RaftElectionTimeout / 2)
+
+	cfg.disconnect((leader1 + 0) % servers)
+	cfg.disconnect((leader1 + 1) % servers)
+	log.Printf("----- %v %v disconnect", (leader1 + 0) % servers, (leader1 + 1) % servers)
+
+	// allow other partition to recover
+	cfg.connect((leader1 + 2) % servers)
+	cfg.connect((leader1 + 3) % servers)
+	cfg.connect((leader1 + 4) % servers)
+	log.Printf("----- %v %v %v reconnect", (leader1 + 2) % servers, (leader1 + 3) % servers, (leader1 + 4) % servers)
+
+	// lots of successful commands to new group.
+	for i := 0; i < 3; i++ {
+		cfg.one(i+50, 3, true)
+	}
+	log.Printf("----- 50-99 agree")
+
+	// now another partitioned leader and one follower
+	leader2 := cfg.checkOneLeader()
+	other := (leader1 + 2) % servers
+	if leader2 == other {
+		other = (leader2 + 1) % servers
+	}
+	cfg.disconnect(other)
+	log.Printf("----- %v disconnect", other)
+
+	// lots more commands that won't commit
+	for i := 0; i < 3; i++ {
+		cfg.rafts[leader2].Start(i+100)
+	}
+	log.Printf("----- leader %v 100-149 submit", leader2)
+	
+	time.Sleep(RaftElectionTimeout / 2)
+
+	// bring original leader back to life,
+	for i := 0; i < servers; i++ {
+		cfg.disconnect(i)
+		log.Printf("----- %v disconnect term %v", i, cfg.rafts[i].currentTerm)
+	}
+	cfg.connect((leader1 + 0) % servers)
+	cfg.connect((leader1 + 1) % servers)
+	cfg.connect(other)
+	for i := 0; i < servers; i++ {
+		cfg.rafts[i].debug = true
+	}
+	log.Printf("----- %v %v %v reconnect", (leader1 + 0) % servers, (leader1 + 1) % servers, other)
+
+	// lots of successful commands to new group.
+	for i := 0; i < 3; i++ {
+		cfg.one(i+150, 3, true)
+	}
+	log.Printf("----- 150-199 agree")
+
+	// now everyone
+	for i := 0; i < servers; i++ {
+		cfg.connect(i)
+		cfg.rafts[i].debug = true
+		log.Printf("----- %v reconnect with term %v", i, cfg.rafts[i].currentTerm)
+	}
+	cfg.one(200, servers, true)
+	log.Printf("----- 200 agree")
+
+	cfg.end()
+}
 func TestBackup2B(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false)

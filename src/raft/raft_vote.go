@@ -38,12 +38,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
 		// log.Printf("server %v return false for args.Term %v < rf.currentTerm %v", rf.me, args.Term, rf.currentTerm)
+		rf.persist()
 		return
 	}
 	if rf.currentTerm < args.Term {
 		rf.currentTerm = args.Term
 		rf.votedFor = args.CandidateId
 		rf.changeRoleCh <- follower
+		rf.persist()
 	}
 	var upToDate bool
 	termDiff := rf.getLastLogTerm() - args.LastLogTerm
@@ -51,18 +53,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	case termDiff < 0:
 		upToDate = true
 	case termDiff == 0:
-		switch rf.getLastLogIndex() <= args.LastLogIndex {
-		case true:
-			upToDate = true
-		case false:
-			upToDate = false
-		}
+		upToDate = rf.getLastLogIndex() <= args.LastLogIndex
 	case termDiff > 0:
 		upToDate = false
 	}
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && upToDate {
 		// log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
+		rf.persist()
 		reply.Term = args.Term
 		// log.Printf("server %v voted %v", rf.me, args.CandidateId)
 		reply.VoteGranted = true
@@ -70,6 +68,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	reply.Term = args.Term
 	reply.VoteGranted = false
+	rf.persist()
 	// log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
 	return
 }
@@ -109,15 +108,15 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 }
 
 func (rf *Raft) getElectionTime() time.Duration {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return time.Millisecond*(time.Duration)(rf.electionTimeRange[0]+r.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
+	return time.Millisecond*time.Duration(rf.electionTimeRange[0]+rand.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
 }
 
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	rf.currentTerm++
-	// term := rf.currentTerm
+	term := rf.currentTerm
 	rf.votedFor = rf.me
+	rf.persist()
 	// log.Printf("server %v start a election with term %v", rf.me, rf.currentTerm)
 	args := RequestVoteArgs{
 		Term: rf.currentTerm,
@@ -180,7 +179,15 @@ func (rf *Raft) startElection() {
 						// rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
 						continue
 					}
+					if term != rf.currentTerm {
+						return
+					}
 					rf.DPrintf("sr %v from %v get reply RV %v", rf.me, index, reply)
+					if reply.Term > rf.currentTerm {
+						rf.currentTerm = reply.Term
+						rf.changeRoleCh <- follower
+						return
+					}
 					if reply.VoteGranted {
 						select {
 						case <-stopCh:
@@ -199,8 +206,8 @@ func (rf *Raft) startElection() {
 
 func (rf *Raft) tryWinElection() {
 	// log.Printf("server %v try to win election", rf.me)
-	go rf.startElection()
 	timer := time.NewTimer(rf.getElectionTime())
+	go rf.startElection()
 	defer timer.Stop()
 	for {
 		timer.Reset(rf.getElectionTime())

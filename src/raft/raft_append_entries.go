@@ -2,7 +2,7 @@ package raft
 
 import (
 	"sync"
-	// "log"
+	"log"
 	"time"
 )
 
@@ -74,14 +74,19 @@ func (rf *Raft) getHBTime() time.Duration {
 }
 
 func (rf *Raft) sendHB(term, index int) {
-	rf.DPrintf("sr %v send HB to %v", rf.me, index)
+	// rf.DPrintf("sr %v send HB to %v", rf.me, index)
 	args := rf.makeHeartBeat(term)
 	reply := AppendEntriesReply{}
 	rf.sendAppendEntries(index, &args, &reply)
-	if reply.Term > term {
-		rf.changeRoleCh <- follower
-		rf.currentTerm = reply.Term
+	if term != rf.currentTerm {
+		return
 	}
+	if reply.Term > term {
+		rf.currentTerm = reply.Term
+		rf.changeRoleCh <- follower
+		rf.persist()
+	}
+	return
 }
 
 // heartbeats: 100 ms
@@ -100,6 +105,7 @@ func (rf *Raft) checkHeartBeats() {
 		case <-rf.heartBeatsCh:
 			continue
 		case <-timer.C:
+			rf.DPrintf("sr %v plan to change to candidate", rf.me)
 			rf.changeRoleCh <- candidate
 		}
 	}
@@ -114,16 +120,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	if len(args.Entries) > 0 {
-		rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
-	}
+	// if len(args.Entries) > 0 {
+	rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
+	// }
 
 	reply.Success = false
 	reply.Term = rf.currentTerm
 	if args.Term < rf.currentTerm { // self is newer
 		return
 	}
+	// rf.DPrintf("sr %v rec HB", rf.me)
 	rf.heartBeatsCh <- 1
+	// rf.DPrintf("sr %v rec HB2", rf.me)
 	if args.Term > rf.currentTerm {
 		// log.Printf("sr %v flag 2", rf.me)
 		rf.currentTerm = args.Term
@@ -132,24 +140,31 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	if rf.getLastLogIndex() < args.PreLogIndex {
 		// log.Printf("sr %v flag 3.1", rf.me)
+		rf.persist()
 		return
 	}
 	if rf.getLogByIndex(args.PreLogIndex).Term != args.PreLogTerm {
 		// log.Printf("sr %v flag 4", rf.me)
 		rf.log = rf.getLogByIndexRange(0, args.PreLogIndex)
 		// log.Printf("sr %v flag 4.1", rf.me)
+		rf.persist()
 		return
 	} else {
+		endIndex := args.PreLogIndex + len(args.Entries)
 		reply.Success = true
 		if len(args.Entries) > 0 {
-			rf.log = append(rf.getLogByIndexRange(0, args.PreLogIndex + 1), args.Entries...)
-		} else {
-			rf.log = rf.getLogByIndexRange(0, args.PreLogIndex + 1)
+			if rf.getLastLogIndex() >= endIndex && 
+			   rf.getLogByIndex(endIndex).Term == args.Entries[len(args.Entries)-1].Term {
+				log.Printf("already exists")
+			} else {
+				rf.log = append(rf.getLogByIndexRange(0, args.PreLogIndex + 1), args.Entries...)
+				rf.persist()
+			}
 		}
 		if args.LeaderCommit > rf.commitIndex {
 			// log.Printf("sr %v flag 6.1", rf.me)
-			if args.LeaderCommit > rf.getLastLogIndex() {
-				rf.commitIndex = rf.getLastLogIndex()
+			if args.LeaderCommit > endIndex {
+				rf.commitIndex = endIndex
 			} else {
 				rf.commitIndex = args.LeaderCommit
 			}
@@ -210,14 +225,19 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 						// log.Printf("rf.nextIndex %v", rf.nextIndex)
 						continue
 					}
+					if term != rf.currentTerm {
+						return
+					}
 					if reply.Term > term {
 						rf.currentTerm = reply.Term
 						rf.changeRoleCh <- follower
+						rf.persist()
 						return
 					}
 					if reply.Success {
 						break
 					} else {
+						rf.nextIndex[index]--
 						for ; rf.getLogByIndex(rf.nextIndex[index]-1).Term == prevLog.Term; {
 							rf.nextIndex[index]--
 						}
@@ -242,6 +262,9 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				if !ok {
 					// log.Printf("sr %v send %v to sr %v fail", rf.me, args, index)
 					continue
+				}
+				if term != rf.currentTerm {
+					return
 				}
 				if reply.Success {
 					rf.nextIndex[index] = lastLogIndex + 1
