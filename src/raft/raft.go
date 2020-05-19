@@ -450,15 +450,13 @@ func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
 	defer mu.Unlock()
 	ii := rf.convertIndex(i)
 	jj := rf.convertIndex(j)
-	if ii == jj {
-		return []LogEntry{rf.log[ii]}
+	if ii < jj {
+		return rf.log[ii:jj]
 	} else if jj == -0 {
 		return rf.log[ii:]
-	} else if ii > jj {
-		panic("wrong index")
-		return []LogEntry{}
 	} else {
-		return rf.log[ii:jj]
+		// log.Printf("empty entries")
+		return []LogEntry{}
 	}
 }
 

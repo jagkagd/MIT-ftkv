@@ -88,7 +88,8 @@ func (rf *Raft) sendHB(term, index int) {
 		rf.changeRole(follower, reply.Term)
 		rf.persist()
 	}
-	if reply.ConflictIndex != -1 || reply.ConflictTerm != -1 {
+	if !reply.Success {
+		// rf.nextIndex[index]--
 		rf.updateFollowerLogCh[index] <- 1
 	}
 	return
@@ -157,7 +158,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.ConflictTerm = rf.getLogByIndex(args.PreLogIndex).Term
 		var i int
 		for i = args.PreLogIndex-1; i >= 0; i-- {
-			if rf.getLogByIndex(i).Term != args.PreLogTerm {
+			if rf.getLogByIndex(i).Term != reply.ConflictTerm {
 				break
 			}
 		}
@@ -211,69 +212,36 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 		case <-rf.stopChUpdateFollowers:
 			return
 		case <-rf.updateFollowerLogCh[index]:
-			if rf.getLastLogIndex() >= rf.nextIndex[index] {
-				flag := false
-				// rf.lock("updateFollower")
-				// rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
-				for {
-					select {
-					case <-rf.killedCh:
-						return
-					case <-rf.stopChUpdateFollowers:
-						return
-					default:
-					}
-					prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
-					args := AppendEntriesArgs{
-						Term: term,
-						LeaderId: rf.me,
-						PreLogIndex: rf.nextIndex[index]-1,
-						PreLogTerm: prevLog.Term,
-						Entries: []LogEntry{},
-						LeaderCommit: rf.commitIndex,
-					}
-					reply := AppendEntriesReply{}
-					// log.Printf("sr %v send check to %v", rf.me, index)
-					rf.sendHBCh[index] <- 1
-					ok := rf.sendAppendEntries(index, &args, &reply)
-					// log.Printf("sr %v send check to %v 2", rf.me, index)
-					if !ok || term != rf.currentTerm {
-						flag = true
-						break
-					}
-					if reply.Term > rf.currentTerm {
-						rf.changeRole(follower, reply.Term)
-						rf.votedFor = -1
-						rf.persist()
-						return
-					}
-					if reply.Success {
-						break
-					} else {
-						rf.nextIndex[index] = rf.getNextIndex(reply.ConflictIndex, reply.ConflictTerm, rf.nextIndex[index])
-					}
-				}
-				if flag {
-					continue
+			rf.DPrintf("leader %v lastLog %v nextIndex %v", rf.me, rf.getLastLogIndex(), rf.nextIndex)
+			// if rf.getLastLogIndex() >= rf.nextIndex[index] {
+			flag := false
+			// rf.lock("updateFollower")
+			// rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
+			for {
+				select {
+				case <-rf.killedCh:
+					return
+				case <-rf.stopChUpdateFollowers:
+					return
+				default:
 				}
 				prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
-				lastLogIndex := rf.getLastLogIndex()
 				args := AppendEntriesArgs{
 					Term: term,
 					LeaderId: rf.me,
 					PreLogIndex: rf.nextIndex[index]-1,
 					PreLogTerm: prevLog.Term,
-					Entries: rf.getLogByIndexRange(rf.nextIndex[index], lastLogIndex+1),
+					Entries: []LogEntry{},
 					LeaderCommit: rf.commitIndex,
 				}
 				reply := AppendEntriesReply{}
-				// log.Printf("sr %v send update log to sr %v with %v", rf.me, index, args)
-				// log.Printf("sr %v send check to %v 3", rf.me, index)
+				// log.Printf("sr %v send check to %v", rf.me, index)
 				rf.sendHBCh[index] <- 1
 				ok := rf.sendAppendEntries(index, &args, &reply)
-				// log.Printf("sr %v send check to %v 4", rf.me, index)
+				// log.Printf("sr %v send check to %v 2", rf.me, index)
 				if !ok || term != rf.currentTerm {
-					continue
+					flag = true
+					break
 				}
 				if reply.Term > rf.currentTerm {
 					rf.changeRole(follower, reply.Term)
@@ -281,18 +249,53 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					rf.persist()
 					return
 				}
+				rf.DPrintf("sr %v from %v %v", rf.me, index, reply)
 				if reply.Success {
-					rf.lock("updateMatchIndex")
-					rf.nextIndex[index] = lastLogIndex + 1
-					rf.matchIndex[index] = lastLogIndex
-					rf.unlock("updateMatchIndex")
-					rf.checkCommitUpdateCh <- 1
+					break
 				} else {
-					panic("something wrong")
+					rf.nextIndex[index] = rf.getNextIndex(reply.ConflictIndex, reply.ConflictTerm, rf.nextIndex[index])
 				}
-				// mu.unlock("updateFollower")
-				rf.DPrintf("sr %v update %v finish", rf.me, index)
 			}
+			if flag {
+				continue
+			}
+			prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
+			lastLogIndex := rf.getLastLogIndex()
+			args := AppendEntriesArgs{
+				Term: term,
+				LeaderId: rf.me,
+				PreLogIndex: rf.nextIndex[index]-1,
+				PreLogTerm: prevLog.Term,
+				Entries: rf.getLogByIndexRange(rf.nextIndex[index], lastLogIndex+1),
+				LeaderCommit: rf.commitIndex,
+			}
+			reply := AppendEntriesReply{}
+			// log.Printf("sr %v send update log to sr %v with %v", rf.me, index, args)
+			// log.Printf("sr %v send check to %v 3", rf.me, index)
+			rf.sendHBCh[index] <- 1
+			ok := rf.sendAppendEntries(index, &args, &reply)
+			// log.Printf("sr %v send check to %v 4", rf.me, index)
+			if !ok || term != rf.currentTerm {
+				continue
+			}
+			if reply.Term > rf.currentTerm {
+				rf.changeRole(follower, reply.Term)
+				rf.votedFor = -1
+				rf.persist()
+				return
+			}
+			if reply.Success {
+				rf.lock("updateMatchIndex")
+				rf.nextIndex[index] = lastLogIndex + 1
+				rf.matchIndex[index] = lastLogIndex
+				rf.unlock("updateMatchIndex")
+				rf.checkCommitUpdateCh <- 1
+			} else {
+				panic("something wrong")
+			}
+			// mu.unlock("updateFollower")
+			rf.DPrintf("sr %v update %v finish", rf.me, index)
+		// }
 		}
 	}
 }
