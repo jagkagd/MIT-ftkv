@@ -31,20 +31,22 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	rf.DPrintf("Request Vote %v to %v log %v", *args, rf.me, rf.log)
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	rf.DPrintf("RV %v to %v term %v log %v", *args, rf.me, rf.currentTerm, rf.log)
+	rf.lock("RV")
+	rf.DPrintf("lock: RV %v to %v term %v log %v", *args, rf.me, rf.currentTerm, rf.log)
+	defer rf.unlock("RV")
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
 		// log.Printf("server %v return false for args.Term %v < rf.currentTerm %v", rf.me, args.Term, rf.currentTerm)
-		rf.persist()
 		return
 	}
+	// log.Printf("sr %v currentTerm %v args.Term %v", rf.me, rf.currentTerm, args.Term)
 	if rf.currentTerm < args.Term {
-		rf.currentTerm = args.Term
+		// log.Printf("sr %v currentTerm %v < args.Term %v", rf.me, rf.currentTerm, args.Term)
 		rf.votedFor = -1
-		rf.changeRoleCh <- follower
+		rf.changeRole(follower, args.Term)
+		rf.DPrintf("sr %v change to follower2", rf.me)
 		rf.persist()
 	}
 	var upToDate bool
@@ -61,15 +63,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		// log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
 		reply.Term = rf.currentTerm
-		// log.Printf("server %v voted %v", rf.me, args.CandidateId)
 		reply.VoteGranted = true
 		rf.heartBeatsCh <- 1
+		rf.DPrintf("sr %v voted %v finish", rf.me, args.CandidateId)
 		rf.persist()
 		return
 	}
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
-	rf.persist()
 	// log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
 	return
 }
@@ -114,7 +115,7 @@ func (rf *Raft) getElectionTime() time.Duration {
 
 func (rf *Raft) startElection() {
 	rf.heartBeatsCh <- 1
-	rf.mu.Lock()
+	rf.lock("election")
 	rf.currentTerm++
 	term := rf.currentTerm
 	rf.votedFor = rf.me
@@ -126,34 +127,30 @@ func (rf *Raft) startElection() {
 		LastLogIndex: rf.getLastLogIndex(),
 		LastLogTerm: rf.getLastLogTerm(),
 	}
-	rf.mu.Unlock()
+	rf.unlock("election")
 	votesCh := make(chan int, len(rf.peers))
-	stopCh := make(chan int)
+	votesCh <- 1
+	// stopCh := make(chan int)
 	getVotes := 0
-	go func() {
+	go func(term int, votesCh chan int, getVotes int) {
 		for range votesCh {
 			select {
 			case <-rf.stopChElection:
-				close(stopCh)
+				// close(stopCh)
 				return
 			default:
 			}
 			getVotes++
 			if getVotes > len(rf.peers)/2 {
-				close(stopCh)
-				rf.changeRoleCh <- leader
+				// close(stopCh)
+				close(rf.stopChElection)
+				rf.changeRole(leader, term)
 				return
 			}
 		}
-	}()
-	votesCh <- 1
+	}(term, votesCh, getVotes)
 	for index := range rf.peers {
-		// if term < rf.currentTerm {
-		// 	return
-		// }
 		select {
-		case <- stopCh:
-			return
 		case <- rf.killedCh:
 			return
 		case <- rf.stopChElection:
@@ -161,47 +158,30 @@ func (rf *Raft) startElection() {
 		default:
 		}
 		if index != rf.me {
-			go func(index int) {
-				for {
-					// if term < rf.currentTerm {
-					// 	return
-					// }
+			go func(term, index int, votesCh chan int) {
+				reply := RequestVoteReply{}
+				rf.DPrintf("sr %v send RV %v", rf.me, args)
+				ok := rf.sendRequestVote(index, &args, &reply)
+				rf.DPrintf("sr %v from %v RV reply %v", rf.me, index, reply)
+				if !ok || term != rf.currentTerm {
+					return
+				}
+				if reply.Term > rf.currentTerm {
+					rf.changeRole(follower, reply.Term)
+					rf.persist()
+					return
+				}
+				if reply.VoteGranted {
 					select {
-					case <- stopCh:
-						return
-					case <- rf.killedCh:
-						return
-					case <- rf.stopChElection:
+					case <-rf.stopChElection:
 						return
 					default:
 					}
-					reply := RequestVoteReply{}
-					rf.sendRequestVote(index, &args, &reply)
-					// if !ok {
-					// 	// rf.DPrintf("sr %v send RV to %v fail", rf.me, index)
-					// 	continue
-					// }
-					if term != rf.currentTerm {
-						return
-					}
-					rf.DPrintf("sr %v from %v get reply RV %v", rf.me, index, reply)
-					if reply.Term > rf.currentTerm {
-						rf.currentTerm = reply.Term
-						rf.changeRoleCh <- follower
-						return
-					}
-					if reply.VoteGranted {
-						select {
-						case <-stopCh:
-							return
-						default:
-						}
-						// log.Printf("server %v receives vote from server %v", rf.me, index)
-						votesCh <- 1
-					}
-					return
+					// log.Printf("server %v receives vote from server %v", rf.me, index)
+					votesCh <- 1
 				}
-			}(index)
+				return
+			}(term, index, votesCh)
 		}
 	}
 }

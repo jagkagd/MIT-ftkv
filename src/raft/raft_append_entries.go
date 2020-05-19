@@ -1,8 +1,8 @@
 package raft
 
 import (
-	"sync"
-	"log"
+	// "sync"
+	// "log"
 	"time"
 )
 
@@ -70,20 +70,19 @@ func (rf *Raft) broadcastHB(term, index int)  {
 }
 
 func (rf *Raft) getHBTime() time.Duration {
-	return time.Millisecond*(time.Duration)(rf.heartBeatTime)
+	return time.Millisecond*time.Duration(rf.heartBeatTime)
 }
 
 func (rf *Raft) sendHB(term, index int) {
 	// rf.DPrintf("sr %v send HB to %v", rf.me, index)
 	args := rf.makeHeartBeat(term)
 	reply := AppendEntriesReply{}
-	rf.sendAppendEntries(index, &args, &reply)
-	if term != rf.currentTerm {
+	ok := rf.sendAppendEntries(index, &args, &reply)
+	if !ok || args.Term != rf.currentTerm {
 		return
 	}
-	if reply.Term > term {
-		rf.currentTerm = reply.Term
-		rf.changeRoleCh <- follower
+	if reply.Term > rf.currentTerm {
+		rf.changeRole(follower, reply.Term)
 		rf.persist()
 	}
 	return
@@ -105,8 +104,8 @@ func (rf *Raft) checkHeartBeats() {
 		case <-rf.heartBeatsCh:
 			continue
 		case <-timer.C:
-			rf.DPrintf("sr %v plan to change to candidate", rf.me)
-			rf.changeRoleCh <- candidate
+			// rf.DPrintf("sr %v plan to change to candidate", rf.me)
+			rf.changeRole(candidate, -1)
 		}
 	}
 }
@@ -117,8 +116,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	rf.lock("AE")
+	defer rf.unlock("AE")
 
 	// if len(args.Entries) > 0 {
 	rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
@@ -133,18 +132,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// rf.DPrintf("sr %v rec HB2", rf.me)
 	if args.Term > rf.currentTerm {
 		// log.Printf("sr %v flag 2", rf.me)
-		rf.currentTerm = args.Term
+		rf.changeRole(follower, args.Term)
 		rf.votedFor = -1
-		if rf.state != leader {
-			rf.heartBeatsCh <- 1
-		}
-		rf.changeRoleCh <- follower
+		rf.persist()
 		// log.Printf("sr %v flag 2.1", rf.me)
 	}
 	rf.heartBeatsCh <- 1
 	if rf.getLastLogIndex() < args.PreLogIndex {
 		// log.Printf("sr %v flag 3.1", rf.me)
-		rf.persist()
 		return
 	}
 	if rf.getLogByIndex(args.PreLogIndex).Term != args.PreLogTerm {
@@ -159,7 +154,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if len(args.Entries) > 0 {
 			if rf.getLastLogIndex() >= endIndex && 
 			   rf.getLogByIndex(endIndex).Term == args.Entries[len(args.Entries)-1].Term {
-				log.Printf("already exists")
+				// log.Printf("already exists")
 			} else {
 				rf.log = append(rf.getLogByIndexRange(0, args.PreLogIndex + 1), args.Entries...)
 				rf.persist()
@@ -198,8 +193,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 			return
 		case <-rf.updateFollowerLogCh[index]:
 			if rf.getLastLogIndex() >= rf.nextIndex[index] {
-				mu := sync.Mutex{}
-				mu.Lock()
+				// rf.lock("updateFollower")
 				// log.Printf("leader %v next %v log %v", rf.me, rf.nextIndex, rf.log)
 				// rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
 				for {
@@ -222,20 +216,14 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					reply := AppendEntriesReply{}
 					// log.Printf("sr %v send check to %v", rf.me, index)
 					rf.sendHBCh[index] <- 1
-					ok := rf.peers[index].Call("Raft.AppendEntries", &args, &reply)
+					ok := rf.sendAppendEntries(index, &args, &reply)
 					// log.Printf("sr %v send check to %v 2", rf.me, index)
-					if !ok {
-						// rf.DPrintf("sr %v send %v to sr %v fail", rf.me, args, index)
-						// log.Printf("rf.nextIndex %v", rf.nextIndex)
-						continue
-					}
-					if term != rf.currentTerm {
+					if !ok || term != rf.currentTerm {
 						return
 					}
 					if reply.Term > rf.currentTerm {
-						rf.currentTerm = reply.Term
+						rf.changeRole(follower, reply.Term)
 						rf.votedFor = -1
-						rf.changeRoleCh <- follower
 						rf.persist()
 						return
 					}
@@ -262,19 +250,14 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				// log.Printf("sr %v send update log to sr %v with %v", rf.me, index, args)
 				// log.Printf("sr %v send check to %v 3", rf.me, index)
 				rf.sendHBCh[index] <- 1
-				ok := rf.peers[index].Call("Raft.AppendEntries", &args, &reply)
+				ok := rf.sendAppendEntries(index, &args, &reply)
 				// log.Printf("sr %v send check to %v 4", rf.me, index)
-				if !ok {
-					// log.Printf("sr %v send %v to sr %v fail", rf.me, args, index)
-					continue
-				}
-				if term != rf.currentTerm {
+				if !ok || term != rf.currentTerm {
 					return
 				}
 				if reply.Term > rf.currentTerm {
-					rf.currentTerm = reply.Term
+					rf.changeRole(follower, reply.Term)
 					rf.votedFor = -1
-					rf.changeRoleCh <- follower
 					rf.persist()
 					return
 				}
@@ -285,7 +268,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				} else {
 					panic("something wrong")
 				}
-				mu.Unlock()
+				// mu.unlock("updateFollower")
 				rf.DPrintf("sr %v update %v finish", rf.me, index)
 			}
 		}
