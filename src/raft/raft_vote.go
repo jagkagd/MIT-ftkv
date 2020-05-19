@@ -46,8 +46,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		// log.Printf("sr %v currentTerm %v < args.Term %v", rf.me, rf.currentTerm, args.Term)
 		rf.votedFor = -1
 		rf.changeRole(follower, args.Term)
-		rf.DPrintf("sr %v change to follower2", rf.me)
 		rf.persist()
+		rf.DPrintf("sr %v change to follower2", rf.me)
 	}
 	var upToDate bool
 	termDiff := rf.getLastLogTerm() - args.LastLogTerm

@@ -297,15 +297,16 @@ func Make(peers []*labrpc.ClientEnd, me int,
 func (rf *Raft) changeRole(role ServerState, term int) {
 	// rf.DPrintf("[%v] changeRole to %v", rf.me, role)
 	// defer rf.DPrintf("[%v] changeRole to %v", rf.me, role)
-	preRole := rf.state
-	if preRole == role {
-		return
-	}
 	rf.changeRoleCh <- 1
-	rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
 	if term != -1 {
 		rf.currentTerm = term
 	}
+	preRole := rf.state
+	if preRole == role {
+		<-rf.changeRoleCh
+		return
+	}
+	rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
 	switch role {
 	case follower:
 		switch preRole {
