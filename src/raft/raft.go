@@ -106,6 +106,7 @@ type Raft struct {
 	stopChSendHB chan int
 	stopChUpdateFollowers chan int
 	stopChCommitUpdate chan int
+	stopChApplyStartCh chan int
 }
 
 // return currentTerm and whether this server
@@ -136,6 +137,7 @@ func (rf *Raft) persist() {
 	e.Encode(rf.log)
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
+	rf.DPrintf("dump sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 }
 
 
@@ -168,6 +170,7 @@ func (rf *Raft) readPersist(data []byte) {
 	rf.votedFor = votedFor
 	rf.log = logs
 	// log.Printf("Read persist success")
+	rf.DPrintf("load sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 }
 
 
@@ -215,6 +218,13 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) applyStart(term int) {
 	var command interface{}
 	for {
+		select {
+		case <-rf.killedCh:
+			return
+		case <-rf.stopChApplyStartCh:
+			return
+		default:
+		}
 		command = <-rf.commandChs
 		rf.log = append(rf.log, LogEntry{
 			Command: command,
@@ -269,12 +279,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.applyCh = applyCh
-	rf.debug = true
+	rf.debug = false
 	// log.Printf("Make a raft server No %v.", rf.me)
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
 	rf.votedFor = -1
+	rf.currentTerm = 0
 	rf.log = []LogEntry{LogEntry{
 		Term: 0,
 		Command: 0,
@@ -287,7 +298,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.checkAppliedCh = make(chan int)
 	go rf.checkApplied()
 	rf.changeRoleCh = make(chan int, 1)
-	rf.changeRole(follower, 0)
+	rf.changeRole(follower, -1)
 
 	// initialize from state persisted before a crash
 
@@ -317,6 +328,7 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 			close(rf.stopChSendHB)
 			close(rf.stopChUpdateFollowers)
 			close(rf.stopChCommitUpdate)
+			close(rf.stopChApplyStartCh)
 		}
 		rf.heartBeatsCh = make(chan int)
 		rf.stopChCheckHB = make(chan int)
@@ -326,6 +338,7 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 		switch preRole {
 		case leader:
 			<-rf.changeRoleCh
+			close(rf.stopChApplyStartCh)
 			return
 		}
 		rand.Seed(time.Now().UnixNano())
@@ -370,6 +383,7 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 
 		rf.commandChs = make(chan interface{})
 		rf.startFinish = make(chan int)
+		rf.stopChApplyStartCh = make(chan int)
 		go rf.applyStart(rf.currentTerm)
 	}
 	rf.state = role
@@ -450,10 +464,10 @@ func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
 
 func (rf *Raft) lock(str string) {
 	rf.mu.Lock()
-	rf.DPrintf("sr %v lock %v", rf.me, str)
+	// rf.DPrintf("sr %v lock %v", rf.me, str)
 }
 
 func (rf *Raft) unlock(str string) {
 	rf.mu.Unlock()
-	rf.DPrintf("sr %v unlock %v", rf.me, str)
+	// rf.DPrintf("sr %v unlock %v", rf.me, str)
 }

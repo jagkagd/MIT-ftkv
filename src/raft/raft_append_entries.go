@@ -18,6 +18,9 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term int
 	Success bool
+
+	ConflictIndex int
+	ConflictTerm int
 }
 
 func (rf *Raft) makeHeartBeat(term int) AppendEntriesArgs {
@@ -85,6 +88,9 @@ func (rf *Raft) sendHB(term, index int) {
 		rf.changeRole(follower, reply.Term)
 		rf.persist()
 	}
+	if reply.ConflictIndex != -1 || reply.ConflictTerm != -1 {
+		rf.updateFollowerLogCh[index] <- 1
+	}
 	return
 }
 
@@ -125,6 +131,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	reply.Success = false
 	reply.Term = rf.currentTerm
+	reply.ConflictIndex = -1
+	reply.ConflictTerm = -1
 	if args.Term < rf.currentTerm { // self is newer
 		return
 	}
@@ -140,10 +148,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.heartBeatsCh <- 1
 	if rf.getLastLogIndex() < args.PreLogIndex {
 		// log.Printf("sr %v flag 3.1", rf.me)
+		reply.ConflictIndex = rf.getLastLogIndex() + 1
+		reply.ConflictTerm = -1
 		return
 	}
 	if rf.getLogByIndex(args.PreLogIndex).Term != args.PreLogTerm {
 		// log.Printf("sr %v flag 4", rf.me)
+		reply.ConflictTerm = rf.getLogByIndex(args.PreLogIndex).Term
+		var i int
+		for i = args.PreLogIndex-1; i >= 0; i-- {
+			if rf.getLogByIndex(i).Term != args.PreLogTerm {
+				break
+			}
+		}
+		reply.ConflictIndex = i + 1
+
 		rf.log = rf.getLogByIndexRange(0, args.PreLogIndex)
 		// log.Printf("sr %v flag 4.1", rf.me)
 		rf.persist()
@@ -195,7 +214,6 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 			if rf.getLastLogIndex() >= rf.nextIndex[index] {
 				flag := false
 				// rf.lock("updateFollower")
-				// log.Printf("leader %v next %v log %v", rf.me, rf.nextIndex, rf.log)
 				// rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
 				for {
 					select {
@@ -232,10 +250,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					if reply.Success {
 						break
 					} else {
-						rf.nextIndex[index]--
-						for ; rf.getLogByIndex(rf.nextIndex[index]-1).Term == prevLog.Term; {
-							rf.nextIndex[index]--
-						}
+						rf.nextIndex[index] = rf.getNextIndex(reply.ConflictIndex, reply.ConflictTerm, rf.nextIndex[index])
 					}
 				}
 				if flag {
@@ -267,8 +282,10 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					return
 				}
 				if reply.Success {
+					rf.lock("updateMatchIndex")
 					rf.nextIndex[index] = lastLogIndex + 1
 					rf.matchIndex[index] = lastLogIndex
+					rf.unlock("updateMatchIndex")
 					rf.checkCommitUpdateCh <- 1
 				} else {
 					panic("something wrong")
@@ -277,6 +294,35 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				rf.DPrintf("sr %v update %v finish", rf.me, index)
 			}
 		}
+	}
+}
+
+func(rf *Raft) getNextIndex(conflictIndex, conflictTerm, nextIndex int) int {
+	if conflictTerm == -1 {
+		return conflictIndex
+	}
+	indexTerm := rf.getLogByIndex(conflictIndex).Term
+	if indexTerm == conflictTerm {
+		index := conflictIndex
+		for ; index < nextIndex; index++ {
+			if rf.getLogByIndex(index).Term != indexTerm {
+				break
+			}
+		}
+		return index
+	} else if indexTerm > conflictTerm {
+		index := conflictIndex
+		for ; index > 0; index-- {
+			if rf.getLogByIndex(index-1).Term == indexTerm {
+				break
+			}
+		}
+		if index == 0 {
+			return conflictIndex
+		}
+		return index
+	} else {
+		return conflictIndex
 	}
 }
 
