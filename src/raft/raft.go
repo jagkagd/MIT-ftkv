@@ -233,6 +233,7 @@ func (rf *Raft) applyStart(term int) {
 		lastLogIndex := rf.getLastLogIndex()
 		rf.matchIndex[rf.me] = lastLogIndex
 		rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, lastLogIndex, rf.log)
+		rf.triggerHB(term)
 		rf.persist()
 		rf.triggerUpdateFollowers()
 		rf.startFinish <- lastLogIndex
@@ -366,7 +367,7 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 		rf.nextIndex = make([]int, len(rf.peers))
 		rf.matchIndex = make([]int, len(rf.peers))
 		rf.matchIndex[rf.me] = rf.getLastLogIndex()
-		go rf.checkCommitUpdate()
+		go rf.checkCommitUpdate(rf.currentTerm)
 
 		rf.updateFollowerLogCh = make([](chan int), len(rf.peers))
 		for i := range rf.peers {
@@ -412,7 +413,7 @@ func (rf *Raft) checkApplied() {
 		case <-rf.killedCh:
 			return
 		case <-rf.checkAppliedCh:
-			rf.lock("checkApplied")
+			// rf.lock("checkApplied")
 			// log.Printf("server %v commitIndex %v lastApplied %v", rf.me, rf.commitIndex, rf.lastApplied)
 			for ; rf.commitIndex > rf.lastApplied; {
 				rf.lastApplied++
@@ -425,7 +426,7 @@ func (rf *Raft) checkApplied() {
 				rf.applyCh <- applyMsg
 				// log.Printf("Apply: sr %v log %v", rf.me, applyMsg)
 			}
-			rf.unlock("checkApplied")
+			// rf.unlock("checkApplied")
 		}
 	}
 }

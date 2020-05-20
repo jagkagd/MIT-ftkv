@@ -23,12 +23,15 @@ type AppendEntriesReply struct {
 	ConflictTerm int
 }
 
-func (rf *Raft) makeHeartBeat(term int) AppendEntriesArgs {
+func (rf *Raft) makeHeartBeat(term, index int) AppendEntriesArgs {
+	prevIndex := rf.nextIndex[index] - 1
 	return AppendEntriesArgs{
 		Term: term,
 		LeaderId: rf.me,
-		PreLogIndex: rf.getLastLogIndex(),
-		PreLogTerm: rf.getLastLogTerm(),
+		// PreLogIndex: rf.getLastLogIndex(),
+		// PreLogTerm: rf.getLastLogTerm(),
+		PreLogIndex: prevIndex,
+		PreLogTerm: rf.getLogByIndex(prevIndex).Term,
 		Entries: []LogEntry{},
 		LeaderCommit: rf.commitIndex,
 	}
@@ -77,19 +80,19 @@ func (rf *Raft) getHBTime() time.Duration {
 }
 
 func (rf *Raft) sendHB(term, index int) {
-	// rf.DPrintf("sr %v send HB to %v", rf.me, index)
-	args := rf.makeHeartBeat(term)
+	args := rf.makeHeartBeat(term, index)
 	reply := AppendEntriesReply{}
+	rf.DPrintf("sr %v send HB %v to %v", rf.me, args, index)
 	ok := rf.sendAppendEntries(index, &args, &reply)
 	if !ok || args.Term != rf.currentTerm {
 		return
 	}
+	rf.DPrintf("sr %v from %v HB reply %v", rf.me, index, reply)
 	if reply.Term > rf.currentTerm {
 		rf.changeRole(follower, reply.Term)
 		rf.persist()
 	}
 	if !reply.Success {
-		// rf.nextIndex[index]--
 		rf.updateFollowerLogCh[index] <- 1
 	}
 	return
@@ -111,7 +114,6 @@ func (rf *Raft) checkHeartBeats() {
 		case <-rf.heartBeatsCh:
 			continue
 		case <-timer.C:
-			// rf.DPrintf("sr %v plan to change to candidate", rf.me)
 			rf.changeRole(candidate, -1)
 		}
 	}
@@ -137,24 +139,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.Term < rf.currentTerm { // self is newer
 		return
 	}
-	// rf.DPrintf("sr %v rec HB", rf.me)
-	// rf.DPrintf("sr %v rec HB2", rf.me)
 	if args.Term > rf.currentTerm {
-		// log.Printf("sr %v flag 2", rf.me)
 		rf.changeRole(follower, args.Term)
 		rf.votedFor = -1
 		rf.persist()
-		// log.Printf("sr %v flag 2.1", rf.me)
 	}
 	rf.heartBeatsCh <- 1
 	if rf.getLastLogIndex() < args.PreLogIndex {
-		// log.Printf("sr %v flag 3.1", rf.me)
 		reply.ConflictIndex = rf.getLastLogIndex() + 1
 		reply.ConflictTerm = -1
 		return
 	}
 	if rf.getLogByIndex(args.PreLogIndex).Term != args.PreLogTerm {
-		// log.Printf("sr %v flag 4", rf.me)
 		reply.ConflictTerm = rf.getLogByIndex(args.PreLogIndex).Term
 		var i int
 		for i = args.PreLogIndex-1; i >= 0; i-- {
@@ -165,7 +161,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.ConflictIndex = i + 1
 
 		rf.log = rf.getLogByIndexRange(0, args.PreLogIndex)
-		// log.Printf("sr %v flag 4.1", rf.me)
 		rf.persist()
 		return
 	} else {
@@ -181,7 +176,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 		}
 		if args.LeaderCommit > rf.commitIndex {
-			// log.Printf("sr %v flag 6.1", rf.me)
 			if args.LeaderCommit > endIndex {
 				rf.commitIndex = endIndex
 			} else {
@@ -191,7 +185,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				rf.checkAppliedCh <- 1
 			}()
 		}
-		// log.Printf("sr %v flag 7", rf.me)
 		return
 	}
 }
@@ -216,7 +209,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 			// if rf.getLastLogIndex() >= rf.nextIndex[index] {
 			flag := false
 			// rf.lock("updateFollower")
-			// rf.DPrintf("leader %v send %v log %v", rf.me, index, rf.getLogByIndexRange(rf.nextIndex[index], -1))
+			rf.DPrintf("leader %v update %v", rf.me, index)
 			for {
 				select {
 				case <-rf.killedCh:
@@ -235,11 +228,23 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					LeaderCommit: rf.commitIndex,
 				}
 				reply := AppendEntriesReply{}
-				// log.Printf("sr %v send check to %v", rf.me, index)
+				rf.DPrintf("sr %v send check %v to %v", rf.me, args, index)
 				rf.sendHBCh[index] <- 1
-				ok := rf.sendAppendEntries(index, &args, &reply)
-				// log.Printf("sr %v send check to %v 2", rf.me, index)
-				if !ok || term != rf.currentTerm {
+				for {
+					select {
+					case <-rf.killedCh:
+						return
+					case <-rf.stopChUpdateFollowers:
+						return
+					default:
+					}
+					ok := rf.sendAppendEntries(index, &args, &reply)
+					// log.Printf("sr %v send check to %v 2", rf.me, index)
+					if ok || term != rf.currentTerm {
+						break
+					}
+				}
+				if term != rf.currentTerm {
 					flag = true
 					break
 				}
@@ -329,7 +334,7 @@ func(rf *Raft) getNextIndex(conflictIndex, conflictTerm, nextIndex int) int {
 	}
 }
 
-func (rf *Raft) checkCommitUpdate() {
+func (rf *Raft) checkCommitUpdate(term int) {
 	for {
 		select {
 		case <-rf.killedCh:
@@ -338,9 +343,10 @@ func (rf *Raft) checkCommitUpdate() {
 			return
 		case <-rf.checkCommitUpdateCh:
 			rf.DPrintf("sr %v check commit update commitIndex %v, match %v", rf.me, rf.commitIndex, rf.matchIndex)
-			rf.mu.Lock()
+			// rf.mu.Lock()
 			var i int
-			for i = rf.getLastLogIndex(); i > rf.commitIndex; i-- {
+			lastLogIndex := rf.getLastLogIndex()
+			for i = lastLogIndex; i > rf.commitIndex; i-- {
 				matches := 0
 				for j := 0; j < len(rf.peers); j++ {
 					if rf.matchIndex[j] >= i {
@@ -353,9 +359,9 @@ func (rf *Raft) checkCommitUpdate() {
 			}
 			// log.Printf("new commitIndex %v", i)
 			rf.commitIndex = i
-			rf.triggerHB(rf.currentTerm)
+			rf.triggerHB(term)
 			// go rf.broadcastHeartBeats(rf.currentTerm)
-			rf.mu.Unlock()
+			// rf.mu.Unlock()
 			rf.checkAppliedCh <- 1
 		}
 	}

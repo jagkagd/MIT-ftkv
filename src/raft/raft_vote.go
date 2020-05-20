@@ -33,7 +33,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.DPrintf("RV %v to %v term %v log %v", *args, rf.me, rf.currentTerm, rf.log)
 	rf.lock("RV")
-	rf.DPrintf("lock: RV %v to %v term %v log %v", *args, rf.me, rf.currentTerm, rf.log)
 	defer rf.unlock("RV")
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
