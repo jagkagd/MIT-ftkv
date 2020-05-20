@@ -207,7 +207,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 		case <-rf.updateFollowerLogCh[index]:
 			rf.DPrintf("leader %v lastLog %v nextIndex %v", rf.me, rf.getLastLogIndex(), rf.nextIndex)
 			// if rf.getLastLogIndex() >= rf.nextIndex[index] {
-			flag := false
+			// flag := false
 			// rf.lock("updateFollower")
 			rf.DPrintf("leader %v update %v", rf.me, index)
 			for {
@@ -229,7 +229,6 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				}
 				reply := AppendEntriesReply{}
 				rf.DPrintf("sr %v send check %v to %v", rf.me, args, index)
-				rf.sendHBCh[index] <- 1
 				for {
 					select {
 					case <-rf.killedCh:
@@ -238,6 +237,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 						return
 					default:
 					}
+					rf.sendHBCh[index] <- 1
 					ok := rf.sendAppendEntries(index, &args, &reply)
 					// log.Printf("sr %v send check to %v 2", rf.me, index)
 					if ok || term != rf.currentTerm {
@@ -245,8 +245,9 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					}
 				}
 				if term != rf.currentTerm {
-					flag = true
-					break
+					// flag = true
+					// break
+					return
 				}
 				if reply.Term > rf.currentTerm {
 					rf.changeRole(follower, reply.Term)
@@ -261,9 +262,9 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					rf.nextIndex[index] = rf.getNextIndex(reply.ConflictIndex, reply.ConflictTerm, rf.nextIndex[index])
 				}
 			}
-			if flag {
-				continue
-			}
+			// if flag {
+			// 	continue
+			// }
 			prevLog := rf.getLogByIndex(rf.nextIndex[index]-1)
 			lastLogIndex := rf.getLastLogIndex()
 			args := AppendEntriesArgs{

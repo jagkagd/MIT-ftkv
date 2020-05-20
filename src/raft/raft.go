@@ -360,11 +360,16 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 		for i := range rf.peers {
 			rf.sendHBCh[i] = make(chan int)
 		}
+		rf.nextIndex = make([]int, len(rf.peers))
+		for i := range rf.peers {
+			if i != rf.me {
+				rf.nextIndex[i] = rf.getLastLogIndex() + 1
+			}
+		}
 		rf.broadcastHeartBeats(rf.currentTerm)
 
 		rf.checkCommitUpdateCh = make(chan int)
 		rf.stopChCommitUpdate = make(chan int)
-		rf.nextIndex = make([]int, len(rf.peers))
 		rf.matchIndex = make([]int, len(rf.peers))
 		rf.matchIndex[rf.me] = rf.getLastLogIndex()
 		go rf.checkCommitUpdate(rf.currentTerm)
@@ -375,11 +380,6 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 		}
 		rf.stopChUpdateFollowers = make(chan int)
 		rf.startUpdateFollowersLog(rf.currentTerm)
-		for i := range rf.peers {
-			if i != rf.me {
-				rf.nextIndex[i] = rf.getLastLogIndex() + 1
-			}
-		}
 		rf.triggerUpdateFollowers()
 
 		rf.commandChs = make(chan interface{})
