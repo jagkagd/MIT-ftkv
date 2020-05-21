@@ -1,8 +1,6 @@
 package raft
 
 import (
-	// "sync"
-	// "log"
 	"math/rand"
 	"time"
 	// "../labrpc"
@@ -37,12 +35,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		// log.Printf("server %v return false for args.Term %v < rf.currentTerm %v", rf.me, args.Term, rf.currentTerm)
 		return
 	}
-	// log.Printf("sr %v currentTerm %v args.Term %v", rf.me, rf.currentTerm, args.Term)
 	if rf.currentTerm < args.Term {
-		// log.Printf("sr %v currentTerm %v < args.Term %v", rf.me, rf.currentTerm, args.Term)
 		rf.votedFor = -1
 		rf.changeRole(follower, args.Term)
 		rf.persist()
@@ -59,7 +54,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		upToDate = false
 	}
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && upToDate {
-		// log.Printf("server %v votedFor %v for request from server %v", rf.me, rf.votedFor, args.CandidateId)
 		rf.votedFor = args.CandidateId
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = true
@@ -70,7 +64,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
-	// log.Printf("server %v return false for other reason: term %v votedFor %v", rf.me, rf.currentTerm, rf.votedFor)
 	return
 }
 
@@ -119,7 +112,6 @@ func (rf *Raft) startElection() {
 	term := rf.currentTerm
 	rf.votedFor = rf.me
 	rf.persist()
-	// log.Printf("server %v start a election with term %v", rf.me, rf.currentTerm)
 	args := RequestVoteArgs{
 		Term: rf.currentTerm,
 		CandidateId: rf.me,
@@ -129,19 +121,16 @@ func (rf *Raft) startElection() {
 	rf.unlock("election")
 	votesCh := make(chan int, len(rf.peers))
 	votesCh <- 1
-	// stopCh := make(chan int)
 	getVotes := 0
 	go func(term int, votesCh chan int, getVotes int) {
 		for range votesCh {
 			select {
 			case <-rf.stopChElection:
-				// close(stopCh)
 				return
 			default:
 			}
 			getVotes++
 			if getVotes > len(rf.peers)/2 {
-				// close(stopCh)
 				close(rf.stopChElection)
 				rf.changeRole(leader, term)
 				return
@@ -176,7 +165,6 @@ func (rf *Raft) startElection() {
 						return
 					default:
 					}
-					// log.Printf("server %v receives vote from server %v", rf.me, index)
 					votesCh <- 1
 				}
 				return
@@ -186,7 +174,6 @@ func (rf *Raft) startElection() {
 }
 
 func (rf *Raft) tryWinElection() {
-	// log.Printf("server %v try to win election", rf.me)
 	timer := time.NewTimer(rf.getElectionTime())
 	go rf.startElection()
 	defer timer.Stop()
