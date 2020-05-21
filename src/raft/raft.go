@@ -275,7 +275,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.applyCh = applyCh
-	rf.debug = false
+	rf.debug = true
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
@@ -447,10 +447,10 @@ func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
 
 func (rf *Raft) lock(str string) {
 	rf.mu.Lock()
-	rf.DPrintf("sr %v lock %v", rf.me, str)
+	// rf.DPrintf("sr %v lock %v", rf.me, str)
 }
 
 func (rf *Raft) unlock(str string) {
 	rf.mu.Unlock()
-	rf.DPrintf("sr %v unlock %v", rf.me, str)
+	// rf.DPrintf("sr %v unlock %v", rf.me, str)
 }

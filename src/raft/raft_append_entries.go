@@ -150,8 +150,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 		reply.ConflictIndex = i + 1
 
-		rf.log = rf.getLogByIndexRange(0, args.PreLogIndex)
-		rf.persist()
+		// rf.log = rf.getLogByIndexRange(0, args.PreLogIndex)
+		// rf.persist()
 		return
 	} else {
 		endIndex := args.PreLogIndex + len(args.Entries)
