@@ -275,7 +275,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.applyCh = applyCh
-	rf.debug = true
+	rf.debug = false
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
