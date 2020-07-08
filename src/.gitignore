@@ -11,4 +11,5 @@ mrtmp.*
 /main/mrworker
 *.so
 /raft/out
+/kvraft/out
 

@@ -18,19 +18,18 @@ package raft
 //
 
 import (
-	"time"
-	"math/rand"
 	"bytes"
 	"log"
+	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"../labgob"
 	"../labrpc"
 )
 
 // import "bytes"
-import "../labgob"
-
-
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -50,9 +49,10 @@ type ApplyMsg struct {
 }
 
 type LogEntry struct {
-	Term int
+	Term    int
 	Command interface{}
 }
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -75,38 +75,38 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	debug bool
-	killedCh chan int
-	state ServerState
+	debug       bool
+	killedCh    chan int
+	state       ServerState
 	currentTerm int
-	votedFor int
-	log []LogEntry
+	votedFor    int
+	log         []LogEntry
 
 	changeRoleCh chan int
-	
+
 	commitIndex int
 	lastApplied int
-	applyCh chan ApplyMsg
-	commandChs chan interface{}
+	applyCh     chan ApplyMsg
+	commandChs  chan interface{}
 	startFinish chan int
 
-	nextIndex []int
-	matchIndex []int
+	nextIndex           []int
+	matchIndex          []int
 	updateFollowerLogCh [](chan int)
 
 	electionTimeRange []int
-	heartBeatTime int
+	heartBeatTime     int
 
-	heartBeatsCh chan int
-	sendHBCh [](chan int)
-	checkAppliedCh chan int
-	checkCommitUpdateCh chan int
-	stopChCheckHB chan int
-	stopChElection chan int
-	stopChSendHB chan int
+	heartBeatsCh          chan int
+	sendHBCh              [](chan int)
+	checkAppliedCh        chan int
+	checkCommitUpdateCh   chan int
+	stopChCheckHB         chan int
+	stopChElection        chan int
+	stopChSendHB          chan int
 	stopChUpdateFollowers chan int
-	stopChCommitUpdate chan int
-	stopChApplyStartCh chan int
+	stopChCommitUpdate    chan int
+	stopChApplyStartCh    chan int
 }
 
 // return currentTerm and whether this server
@@ -139,7 +139,6 @@ func (rf *Raft) persist() {
 	rf.DPrintf("dump sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 }
 
-
 //
 // restore previously persisted state.
 //
@@ -170,14 +169,10 @@ func (rf *Raft) readPersist(data []byte) {
 	rf.DPrintf("load sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 }
 
-
-
-
 //
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
-
 
 //
 // the service using Raft (e.g. a k/v server) wants to start
@@ -224,7 +219,7 @@ func (rf *Raft) applyStart(term int) {
 		command = <-rf.commandChs
 		rf.log = append(rf.log, LogEntry{
 			Command: command,
-			Term: term,
+			Term:    term,
 		})
 		lastLogIndex := rf.getLastLogIndex()
 		rf.matchIndex[rf.me] = lastLogIndex
@@ -282,7 +277,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.votedFor = -1
 	rf.currentTerm = 0
 	rf.log = []LogEntry{LogEntry{
-		Term: 0,
+		Term:    0,
 		Command: 0,
 	}}
 	rf.readPersist(persister.ReadRaftState())
@@ -301,6 +296,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 }
 
 func (rf *Raft) changeRole(role ServerState, term int) {
+	log.Printf("[%v] %v", rf.me, role)
 	rf.changeRoleCh <- 1
 	if term != -1 {
 		rf.currentTerm = term
@@ -386,7 +382,7 @@ func (rf *Raft) getLastLogIndex() int {
 	if len(rf.log) == 0 {
 		return 0
 	}
-	return len(rf.log)-1
+	return len(rf.log) - 1
 }
 
 func (rf *Raft) getLastLogTerm() int {
@@ -402,11 +398,11 @@ func (rf *Raft) checkApplied() {
 		case <-rf.killedCh:
 			return
 		case <-rf.checkAppliedCh:
-			for ; rf.commitIndex > rf.lastApplied; {
+			for rf.commitIndex > rf.lastApplied {
 				rf.lastApplied++
 				appliedLog := rf.getLogByIndex(rf.lastApplied)
 				applyMsg := ApplyMsg{
-					Command: appliedLog.Command,
+					Command:      appliedLog.Command,
 					CommandIndex: rf.lastApplied,
 					CommandValid: true,
 				}
@@ -419,8 +415,8 @@ func (rf *Raft) checkApplied() {
 func (rf *Raft) convertIndex(i int) int {
 	if i >= 0 {
 		return i
-	} 
-	return len(rf.log)+i
+	}
+	return len(rf.log) + i
 }
 
 func (rf *Raft) getLogByIndex(i int) LogEntry {

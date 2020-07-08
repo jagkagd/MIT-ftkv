@@ -8,3 +8,4 @@ src/main/mrmaster
 src/main/mrworker
 src/main/mr-out*
 .vscode/
+out
