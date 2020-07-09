@@ -152,9 +152,9 @@ func (ck *Clerk) processGet(op ClerkOp) string {
 			leaderId = (leaderId + 1) % len(ck.servers)
 			continue
 		}
-		if reply.RequestId != op.RequestId || reply.MsgId != msgId {
-			continue
-		}
+		// if reply.RequestId != op.RequestId || reply.MsgId != msgId {
+		// 	continue
+		// }
 		switch reply.Err {
 		case OK:
 			ck.leaderId = leaderId
@@ -198,9 +198,9 @@ func (ck *Clerk) processPutAppend(op ClerkOp) {
 			leaderId = (leaderId + 1) % len(ck.servers)
 			continue
 		}
-		if reply.RequestId != op.RequestId || reply.MsgId != msgId {
-			continue
-		}
+		// if reply.RequestId != op.RequestId || reply.MsgId != msgId {
+		// 	continue
+		// }
 		switch reply.Err {
 		case OK:
 			ck.leaderId = leaderId
@@ -211,6 +211,7 @@ func (ck *Clerk) processPutAppend(op ClerkOp) {
 			continue
 		default:
 			DPrintf("Other Err: %v", reply.Err)
+			leaderId = (leaderId + 1) % len(ck.servers)
 			continue
 		}
 	}

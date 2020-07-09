@@ -9,3 +9,4 @@ src/main/mrworker
 src/main/mr-out*
 .vscode/
 out
+*.test

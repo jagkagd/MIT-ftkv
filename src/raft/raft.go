@@ -296,7 +296,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 }
 
 func (rf *Raft) changeRole(role ServerState, term int) {
-	log.Printf("[%v] %v", rf.me, role)
+	// log.Printf("[%v] %v", rf.me, role)
 	rf.changeRoleCh <- 1
 	if term != -1 {
 		rf.currentTerm = term

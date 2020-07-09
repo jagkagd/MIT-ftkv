@@ -12,4 +12,4 @@ mrtmp.*
 *.so
 /raft/out
 /kvraft/out
-
+*.test
