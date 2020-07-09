@@ -58,6 +58,7 @@ type KVServer struct {
 	selected    bool
 	waitTime    int
 	lastApplied map[int64]int64
+	notifyChs   map[int64](chan bool)
 
 	killedCh chan bool
 }
@@ -65,6 +66,9 @@ type KVServer struct {
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
 	// log.Printf("Server Get %v", args)
+	kv.mu.Lock()
+	kv.notifyChs[args.ClientId] = make(chan bool, 1)
+	kv.mu.Unlock()
 	reply.RequestId = args.RequestId
 	reply.MsgId = args.MsgId
 	kv.cmdsCh <- ServerOp{
@@ -80,9 +84,10 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		return
 	case <-time.After(time.Duration(kv.waitTime*int(math.Ceil(float64(args.MsgId)/float64(args.ServerNum)))) * time.Millisecond):
 		reply.Err = ErrBadNet
+		kv.notifyChs[args.ClientId] <- true
 		return
 	case rep := <-kv.repsCh:
-		if rep.RequestId != args.RequestId || rep.MsgId != args.MsgId {
+		if rep.RequestId != args.RequestId {
 			reply.Err = ErrBadNet
 			return
 		}
@@ -95,6 +100,9 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	// log.Printf("Server PutAppend %v", args)
+	kv.mu.Lock()
+	kv.notifyChs[args.ClientId] = make(chan bool, 1)
+	kv.mu.Unlock()
 	reply.RequestId = args.RequestId
 	reply.MsgId = args.MsgId
 	kv.cmdsCh <- ServerOp{
@@ -110,10 +118,13 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	case <-kv.killedCh:
 		return
 	case <-time.After(time.Duration(kv.waitTime*int(math.Ceil(float64(args.MsgId)/float64(args.ServerNum)))) * time.Millisecond):
+		DPrintf("Timeout")
 		reply.Err = ErrBadNet
+		kv.notifyChs[args.ClientId] <- true
 		return
 	case rep := <-kv.repsCh:
-		if rep.RequestId != args.RequestId || rep.MsgId != args.MsgId {
+		if rep.RequestId != args.RequestId { // || rep.MsgId != args.MsgId {
+			DPrintf("%v %v %v %v", rep.RequestId, args.RequestId, rep.MsgId, args.MsgId)
 			reply.Err = ErrBadNet
 			return
 		}
@@ -176,6 +187,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.cmdsCh = make(chan ServerOp)
 	kv.repsCh = make(chan ServerRep)
 	kv.lastApplied = make(map[int64]int64)
+	kv.notifyChs = make(map[int64](chan bool), 1)
 	kv.killedCh = make(chan bool)
 
 	go kv.updateDB()
@@ -262,8 +274,13 @@ func (kv *KVServer) updateDB() {
 		}
 		kv.mu.Unlock()
 		if isLeader {
-			kv.repsCh <- reply
-			DPrintf("DB %v", kv.db)
+			select {
+			case <-kv.notifyChs[msg.ClientId]:
+				continue
+			default:
+				kv.repsCh <- reply
+				DPrintf("DB %v", kv.db)
+			}
 		}
 	}
 }
