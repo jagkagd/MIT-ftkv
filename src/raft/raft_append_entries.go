@@ -130,7 +130,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.lock("AE")
 	defer rf.unlock("AE")
-	rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
+	// rf.DPrintf("sr %v term %v with log %v receive AE %v", rf.me, rf.currentTerm, rf.log, *args)
 
 	reply.Success = false
 	reply.Term = rf.currentTerm
@@ -208,11 +208,11 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 		case <-rf.stopChUpdateFollowers:
 			return
 		case <-rf.updateFollowerLogCh[index]:
-			rf.DPrintf("leader %v last %v next %v match %v", rf.me, rf.getLastLogIndex(), rf.nextIndex, rf.matchIndex)
+			// rf.DPrintf("leader %v last %v next %v match %v", rf.me, rf.getLastLogIndex(), rf.nextIndex, rf.matchIndex)
 			if rf.getLastLogIndex() == rf.matchIndex[index] {
 				continue
 			}
-			rf.DPrintf("leader %v update %v", rf.me, index)
+			// rf.DPrintf("leader %v update %v", rf.me, index)
 			for {
 				select {
 				case <-rf.killedCh:
@@ -237,7 +237,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 				}
 				rf.unlock("updateFollower")
 				reply := AppendEntriesReply{}
-				rf.DPrintf("sr %v send check %v to %v", rf.me, args, index)
+				// rf.DPrintf("sr %v send check %v to %v", rf.me, args, index)
 				for {
 					select {
 					case <-rf.killedCh:
@@ -261,7 +261,7 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 					rf.persist()
 					return
 				}
-				rf.DPrintf("sr %v from %v %v", rf.me, index, reply)
+				// rf.DPrintf("sr %v from %v %v", rf.me, index, reply)
 				if reply.Success {
 					break
 				} else {
@@ -284,8 +284,8 @@ func (rf *Raft) updateFollowerLog(index, term int) {
 }
 
 func (rf *Raft) updateByAppendEntries(index, term int) int {
-	rf.DPrintf("update by AE lastIn %v next %v", rf.lastIncludedIndex, rf.nextIndex[index])
-	rf.mu.Lock()
+	// rf.DPrintf("update by AE lastIn %v next %v", rf.lastIncludedIndex, rf.nextIndex[index])
+	rf.lock("updateByAE")
 	if rf.nextIndex[index] <= rf.lastIncludedIndex {
 		go func() {
 			rf.updateFollowerLogCh[index] <- 1
@@ -302,7 +302,7 @@ func (rf *Raft) updateByAppendEntries(index, term int) int {
 		Entries:      rf.getLogByIndexRange(rf.nextIndex[index], lastLogIndex+1),
 		LeaderCommit: rf.commitIndex,
 	}
-	rf.mu.Unlock()
+	rf.unlock("updateByAE")
 	reply := AppendEntriesReply{}
 	rf.sendHBCh[index] <- 1
 	ok := rf.sendAppendEntries(index, &args, &reply)
@@ -327,7 +327,7 @@ func (rf *Raft) updateByAppendEntries(index, term int) int {
 	} else {
 		panic("something wrong")
 	}
-	rf.DPrintf("sr %v update %v finish", rf.me, index)
+	// rf.DPrintf("sr %v update %v finish", rf.me, index)
 	return -1
 }
 
@@ -339,7 +339,7 @@ func (rf *Raft) updateBySnapshot(index, term int) int {
 		LastIncludedTerm:  rf.lastIncludedTerm,
 		Data:              rf.persister.ReadSnapshot(),
 	}
-	rf.DPrintf("update by SS with %v", args)
+	// rf.DPrintf("update by SS with %v", args)
 	reply := InstallSnapshotReply{}
 	rf.sendHBCh[index] <- 1
 	ok := rf.sendInstallSnapshot(index, &args, &reply)
@@ -363,11 +363,13 @@ func (rf *Raft) updateBySnapshot(index, term int) int {
 	go func() {
 		rf.updateFollowerLogCh[index] <- 1
 	}()
-	rf.DPrintf("sr %v update %v finish", rf.me, index)
+	// rf.DPrintf("sr %v update %v finish", rf.me, index)
 	return -1
 }
 
 func (rf *Raft) getNextIndex(conflictIndex, conflictTerm, nextIndex int) int {
+	rf.lock("getNextIndex")
+	defer rf.unlock("getNextIndex")
 	if conflictTerm == -1 {
 		return conflictIndex
 	}
@@ -405,7 +407,7 @@ func (rf *Raft) checkCommitUpdate(term int) {
 			return
 		case <-rf.checkCommitUpdateCh:
 			// rf.lock("checkCommitUpdate")
-			rf.DPrintf("sr %v check commit update commitIndex %v, match %v", rf.me, rf.commitIndex, rf.matchIndex)
+			rf.DPrintf("[%v] check commit commitIndex %v, match %v lastIn %v", rf.me, rf.commitIndex, rf.matchIndex, rf.lastIncludedIndex)
 			var i int
 			lastLogIndex := rf.getLastLogIndex()
 			for i = lastLogIndex; i > rf.commitIndex; i-- {

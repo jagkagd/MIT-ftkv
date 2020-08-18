@@ -241,7 +241,7 @@ func (rf *Raft) applyStart(term int) {
 		})
 		lastLogIndex := rf.getLastLogIndex()
 		rf.matchIndex[rf.me] = lastLogIndex
-		rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, lastLogIndex, rf.log)
+		// rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, lastLogIndex, rf.log)
 		rf.persist()
 		rf.triggerUpdateFollowers()
 		rf.startFinish <- lastLogIndex
@@ -288,7 +288,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.applyCh = applyCh
-	rf.debug = true
+	rf.debug = false
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
@@ -416,28 +416,33 @@ func (rf *Raft) checkApplied() {
 		case <-rf.killedCh:
 			return
 		case <-rf.checkAppliedCh:
+			if rf.lastApplied < rf.lastIncludedIndex {
+				rf.lastApplied = rf.lastIncludedIndex
+				applyMsg := ApplyMsg{
+					Command:      "InstallSnapshot",
+					CommandValid: false,
+					CommandIndex: rf.lastIncludedIndex,
+				}
+				rf.applyCh <- applyMsg
+			}
+			if rf.commitIndex < rf.lastApplied {
+				rf.commitIndex = rf.lastApplied
+				continue
+			}
 			for rf.commitIndex > rf.lastApplied {
-				rf.lock("checkApplied")
 				rf.lastApplied++
-				if rf.lastApplied <= rf.lastIncludedIndex {
-					rf.lastApplied = rf.lastIncludedIndex
+				rf.DPrintf("[%v] 2 commitIndex %v lastApplied %v lastIn %v", rf.me, rf.commitIndex, rf.lastApplied, rf.lastIncludedIndex)
+				if rf.lastApplied > rf.lastIncludedIndex {
+					appliedLog := rf.getLogByIndex(rf.lastApplied)
 					applyMsg := ApplyMsg{
-						Command:      "InstallSnapshot",
-						CommandValid: false,
-						CommandIndex: rf.lastIncludedIndex,
+						Command:      appliedLog.Command,
+						CommandIndex: rf.lastApplied,
+						CommandValid: true,
 					}
-					rf.unlock("checkApplied")
 					rf.applyCh <- applyMsg
+				} else {
 					continue
 				}
-				appliedLog := rf.getLogByIndex(rf.lastApplied)
-				applyMsg := ApplyMsg{
-					Command:      appliedLog.Command,
-					CommandIndex: rf.lastApplied,
-					CommandValid: true,
-				}
-				rf.unlock("checkApplied")
-				rf.applyCh <- applyMsg
 			}
 		}
 	}
@@ -476,10 +481,10 @@ func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
 
 func (rf *Raft) lock(str string) {
 	rf.mu.Lock()
-	// rf.DPrintf("sr %v lock %v", rf.me, str)
+	rf.DPrintf("[%v] lock %v", rf.me, str)
 }
 
 func (rf *Raft) unlock(str string) {
 	rf.mu.Unlock()
-	// rf.DPrintf("sr %v unlock %v", rf.me, str)
+	rf.DPrintf("[%v] unlock %v", rf.me, str)
 }

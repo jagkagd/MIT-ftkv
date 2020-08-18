@@ -13,17 +13,20 @@ type InstallSnapshotReply struct {
 }
 
 func (rf *Raft) SavePersistAndSnapshot(logIndex int, data []byte) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	rf.lock("SavePersistAndSnapshot")
+	defer rf.unlock("SavePersistAndSnapshot")
 
 	if logIndex <= rf.lastIncludedIndex {
 		return
 	}
-	rf.DPrintf("origin log %v", rf.log)
+	// rf.DPrintf("origin log %v", rf.log)
 	rf.log = rf.log[rf.convertIndex(logIndex):] // log[0] for guard
 	rf.lastIncludedIndex = logIndex
 	rf.lastIncludedTerm = rf.getLogByIndex(logIndex).Term
-	rf.DPrintf("lastIncludedIndex %v lastTerm %v log %v", rf.lastIncludedIndex, rf.lastIncludedTerm, rf.log)
+	if rf.lastApplied < rf.lastIncludedIndex {
+		rf.lastApplied = rf.lastIncludedIndex
+	}
+	rf.DPrintf("[%v] lastIncludedIndex %v lastTerm %v log %v", rf.me, rf.lastIncludedIndex, rf.lastIncludedTerm, rf.log)
 	stateData := rf.getRaftState()
 	rf.persister.SaveStateAndSnapshot(stateData, data)
 }
@@ -46,23 +49,29 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		rf.votedFor = -1
 		rf.persist()
 	}
+	if args.LastIncludedIndex <= rf.lastIncludedIndex {
+		return
+	}
 	if rf.getLastLogIndex() >= args.LastIncludedIndex {
 		return
 	}
-	if args.LastIncludedIndex > rf.lastIncludedIndex && rf.getLastLogIndex() > args.LastIncludedIndex {
-		rf.log = rf.getLogByIndexRange(args.LastIncludedIndex, -1)
-	} else {
-		rf.log = []LogEntry{
-			LogEntry{
-				Term:    args.LastIncludedTerm,
-				Command: 0,
-			},
+	if args.LastIncludedIndex > rf.lastIncludedIndex {
+		if rf.getLastLogIndex() > args.LastIncludedIndex {
+			rf.log = rf.getLogByIndexRange(args.LastIncludedIndex, -1)
+		} else {
+			rf.log = []LogEntry{
+				LogEntry{
+					Term:    args.LastIncludedTerm,
+					Command: 0,
+				},
+			}
 		}
 	}
 	rf.lastIncludedIndex = args.LastIncludedIndex
 	rf.lastIncludedTerm = args.LastIncludedTerm
 	rf.lastApplied = args.LastIncludedIndex
 	rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
+	rf.DPrintf("[%v] IS lastIncludedIndex %v", rf.me, rf.lastIncludedIndex)
 	go func() {
 		rf.applyCh <- ApplyMsg{
 			Command:      "InstallSnapshot",
