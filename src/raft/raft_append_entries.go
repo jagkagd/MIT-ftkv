@@ -325,7 +325,7 @@ func (rf *Raft) updateByAppendEntries(index, term int) int {
 			rf.updateFollowerLogCh[index] <- 1
 		}()
 	} else {
-		panic("something wrong")
+		return _continue
 	}
 	// rf.DPrintf("sr %v update %v finish", rf.me, index)
 	return -1
@@ -373,10 +373,16 @@ func (rf *Raft) getNextIndex(conflictIndex, conflictTerm, nextIndex int) int {
 	if conflictTerm == -1 {
 		return conflictIndex
 	}
+	if conflictIndex <= rf.lastIncludedIndex {
+		return rf.lastIncludedIndex
+	}
 	indexTerm := rf.getLogByIndex(conflictIndex).Term
 	if indexTerm == conflictTerm {
 		index := conflictIndex
 		for ; index < nextIndex; index++ {
+			if index <= rf.lastIncludedIndex {
+				return rf.lastIncludedIndex
+			}
 			if rf.getLogByIndex(index).Term != indexTerm {
 				break
 			}
@@ -385,6 +391,9 @@ func (rf *Raft) getNextIndex(conflictIndex, conflictTerm, nextIndex int) int {
 	} else if indexTerm > conflictTerm {
 		index := conflictIndex
 		for ; index > 0; index-- {
+			if index-1 <= rf.lastIncludedIndex {
+				return rf.lastIncludedIndex
+			}
 			if rf.getLogByIndex(index-1).Term == indexTerm {
 				break
 			}
