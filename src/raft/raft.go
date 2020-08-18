@@ -107,6 +107,9 @@ type Raft struct {
 	stopChUpdateFollowers chan int
 	stopChCommitUpdate    chan int
 	stopChApplyStartCh    chan int
+
+	lastIncludedIndex int
+	lastIncludedTerm  int
 }
 
 // return currentTerm and whether this server
@@ -129,14 +132,20 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
+	data := rf.getRaftState()
+	rf.persister.SaveRaftState(data)
+	// rf.DPrintf("dump sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+}
+
+func (rf *Raft) getRaftState() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
+	e.Encode(rf.lastIncludedIndex)
+	e.Encode(rf.lastIncludedTerm)
 	e.Encode(rf.log)
-	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
-	rf.DPrintf("dump sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	return w.Bytes()
 }
 
 //
@@ -153,6 +162,7 @@ func (rf *Raft) readPersist(data []byte) {
 	d := labgob.NewDecoder(r)
 	var currentTerm int
 	var votedFor int
+	var lastIncludedIndex, lastIncludedTerm int
 	var logs []LogEntry
 	if d.Decode(&currentTerm) != nil {
 		log.Fatalf("Read currentTerm error")
@@ -160,13 +170,21 @@ func (rf *Raft) readPersist(data []byte) {
 	if d.Decode(&votedFor) != nil {
 		log.Fatalf("Read votedFor error")
 	}
+	if d.Decode(&lastIncludedIndex) != nil {
+		log.Fatalf("Read votedFor error")
+	}
+	if d.Decode(&lastIncludedTerm) != nil {
+		log.Fatalf("Read votedFor error")
+	}
 	if d.Decode(&logs) != nil {
 		log.Fatalf("Read logs error")
 	}
 	rf.currentTerm = currentTerm
 	rf.votedFor = votedFor
+	rf.lastIncludedIndex = lastIncludedIndex
+	rf.lastIncludedTerm = lastIncludedTerm
 	rf.log = logs
-	rf.DPrintf("load sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	// rf.DPrintf("load sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 }
 
 //
@@ -223,7 +241,7 @@ func (rf *Raft) applyStart(term int) {
 		})
 		lastLogIndex := rf.getLastLogIndex()
 		rf.matchIndex[rf.me] = lastLogIndex
-		rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, lastLogIndex, rf.log)
+		// rf.DPrintf("Start: sr %v gets %v index %v log %v", rf.me, command, lastLogIndex, rf.log)
 		rf.persist()
 		rf.triggerUpdateFollowers()
 		rf.startFinish <- lastLogIndex
@@ -306,7 +324,7 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 		<-rf.changeRoleCh
 		return
 	}
-	rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
+	// rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
 	switch role {
 	case follower:
 		switch preRole {
@@ -382,7 +400,7 @@ func (rf *Raft) getLastLogIndex() int {
 	if len(rf.log) == 0 {
 		return 0
 	}
-	return len(rf.log) - 1
+	return len(rf.log) - 1 + rf.lastIncludedIndex
 }
 
 func (rf *Raft) getLastLogTerm() int {
@@ -398,23 +416,43 @@ func (rf *Raft) checkApplied() {
 		case <-rf.killedCh:
 			return
 		case <-rf.checkAppliedCh:
-			for rf.commitIndex > rf.lastApplied {
-				rf.lastApplied++
-				appliedLog := rf.getLogByIndex(rf.lastApplied)
+			if rf.lastApplied < rf.lastIncludedIndex {
+				rf.lastApplied = rf.lastIncludedIndex
 				applyMsg := ApplyMsg{
-					Command:      appliedLog.Command,
-					CommandIndex: rf.lastApplied,
-					CommandValid: true,
+					Command:      "InstallSnapshot",
+					CommandValid: false,
+					CommandIndex: rf.lastIncludedIndex,
 				}
 				rf.applyCh <- applyMsg
+			}
+			if rf.commitIndex < rf.lastApplied {
+				rf.commitIndex = rf.lastApplied
+				continue
+			}
+			for rf.commitIndex > rf.lastApplied {
+				rf.lastApplied++
+				rf.DPrintf("[%v] 2 commitIndex %v lastApplied %v lastIn %v", rf.me, rf.commitIndex, rf.lastApplied, rf.lastIncludedIndex)
+				if rf.lastApplied > rf.lastIncludedIndex {
+					appliedLog := rf.getLogByIndex(rf.lastApplied)
+					applyMsg := ApplyMsg{
+						Command:      appliedLog.Command,
+						CommandIndex: rf.lastApplied,
+						CommandValid: true,
+					}
+					rf.applyCh <- applyMsg
+				} else {
+					continue
+				}
 			}
 		}
 	}
 }
 
 func (rf *Raft) convertIndex(i int) int {
+	// rf.DPrintf("convertIndex %v-%v", i, rf.lastIncludedIndex)
 	if i >= 0 {
-		return i
+		ii := i - rf.lastIncludedIndex
+		return ii
 	}
 	return len(rf.log) + i
 }
@@ -443,10 +481,10 @@ func (rf *Raft) getLogByIndexRange(i, j int) []LogEntry {
 
 func (rf *Raft) lock(str string) {
 	rf.mu.Lock()
-	// rf.DPrintf("sr %v lock %v", rf.me, str)
+	rf.DPrintf("[%v] lock %v", rf.me, str)
 }
 
 func (rf *Raft) unlock(str string) {
 	rf.mu.Unlock()
-	// rf.DPrintf("sr %v unlock %v", rf.me, str)
+	rf.DPrintf("[%v] unlock %v", rf.me, str)
 }
