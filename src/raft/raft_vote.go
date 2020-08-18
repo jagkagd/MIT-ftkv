@@ -8,10 +8,10 @@ import (
 
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	Term int
-	CandidateId int
+	Term         int
+	CandidateId  int
 	LastLogIndex int
-	LastLogTerm int
+	LastLogTerm  int
 }
 
 //
@@ -20,7 +20,7 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
-	Term int
+	Term        int
 	VoteGranted bool
 }
 
@@ -29,7 +29,7 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	rf.DPrintf("RV %v to %v term %v log %v", *args, rf.me, rf.currentTerm, rf.log)
+	// rf.DPrintf("RV %v to %v term %v log %v", *args, rf.me, rf.currentTerm, rf.log)
 	rf.lock("RV")
 	defer rf.unlock("RV")
 	if args.Term < rf.currentTerm {
@@ -41,7 +41,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = -1
 		rf.changeRole(follower, args.Term)
 		rf.persist()
-		rf.DPrintf("sr %v change to follower2", rf.me)
+		// rf.DPrintf("sr %v change to follower2", rf.me)
 	}
 	var upToDate bool
 	termDiff := rf.getLastLogTerm() - args.LastLogTerm
@@ -58,7 +58,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = true
 		rf.heartBeatsCh <- 1
-		rf.DPrintf("sr %v voted %v finish", rf.me, args.CandidateId)
+		// rf.DPrintf("sr %v voted %v finish", rf.me, args.CandidateId)
 		rf.persist()
 		return
 	}
@@ -102,7 +102,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 }
 
 func (rf *Raft) getElectionTime() time.Duration {
-	return time.Millisecond*time.Duration(rf.electionTimeRange[0]+rand.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
+	return time.Millisecond * time.Duration(rf.electionTimeRange[0]+rand.Intn(rf.electionTimeRange[1]-rf.electionTimeRange[0]))
 }
 
 func (rf *Raft) startElection() {
@@ -113,10 +113,10 @@ func (rf *Raft) startElection() {
 	rf.votedFor = rf.me
 	rf.persist()
 	args := RequestVoteArgs{
-		Term: rf.currentTerm,
-		CandidateId: rf.me,
+		Term:         rf.currentTerm,
+		CandidateId:  rf.me,
 		LastLogIndex: rf.getLastLogIndex(),
-		LastLogTerm: rf.getLastLogTerm(),
+		LastLogTerm:  rf.getLastLogTerm(),
 	}
 	rf.unlock("election")
 	votesCh := make(chan int, len(rf.peers))
@@ -139,18 +139,18 @@ func (rf *Raft) startElection() {
 	}(term, votesCh, getVotes)
 	for index := range rf.peers {
 		select {
-		case <- rf.killedCh:
+		case <-rf.killedCh:
 			return
-		case <- rf.stopChElection:
+		case <-rf.stopChElection:
 			return
 		default:
 		}
 		if index != rf.me {
 			go func(term, index int, votesCh chan int) {
 				reply := RequestVoteReply{}
-				rf.DPrintf("sr %v send RV %v", rf.me, args)
+				// rf.DPrintf("sr %v send RV %v", rf.me, args)
 				ok := rf.sendRequestVote(index, &args, &reply)
-				rf.DPrintf("sr %v from %v RV reply %v", rf.me, index, reply)
+				// rf.DPrintf("sr %v from %v RV reply %v", rf.me, index, reply)
 				if !ok || term != rf.currentTerm {
 					return
 				}
@@ -180,11 +180,11 @@ func (rf *Raft) tryWinElection() {
 	for {
 		timer.Reset(rf.getElectionTime())
 		select {
-		case <- rf.killedCh:
+		case <-rf.killedCh:
 			return
-		case <- rf.stopChElection:
+		case <-rf.stopChElection:
 			return
-		case <- timer.C:
+		case <-timer.C:
 			go rf.startElection()
 		}
 	}

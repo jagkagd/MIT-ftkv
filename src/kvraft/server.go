@@ -1,6 +1,7 @@
 package kvraft
 
 import (
+	"bytes"
 	"log"
 	"math"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"../raft"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -52,6 +53,7 @@ type KVServer struct {
 	dead    int32 // set by Kill()
 
 	maxraftstate int // snapshot if log grows this big
+	persister    *raft.Persister
 	// Your definitions here.
 	db          map[string]string
 	cmdsCh      chan ServerOp
@@ -181,6 +183,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv := new(KVServer)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
+	kv.persister = persister
 
 	// You may need initialization code here.
 
@@ -192,6 +195,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.repsCh = make(map[int64](chan ServerRep))
 	kv.lastApplied = make(map[int64]int64)
 	kv.killedCh = make(chan bool)
+
+	kv.readPersist(kv.persister.ReadSnapshot())
 
 	go kv.updateDB()
 	go kv.raftStart()
@@ -213,7 +218,6 @@ func (kv *KVServer) raftStart() {
 		_, _, isLeader := kv.rf.Start(cmd)
 		// ch := make(chan ServerRep, 1)
 		// kv.repsCh[cmd.RequestId] = ch
-		kv.mu.Unlock()
 		DPrintf("[%v] raftStart %v", isLeader, cmd)
 		if !isLeader {
 			if _, ok := kv.repsCh[cmd.RequestId]; ok {
@@ -224,6 +228,7 @@ func (kv *KVServer) raftStart() {
 				}
 			}
 		}
+		kv.mu.Unlock()
 	}
 }
 
@@ -235,11 +240,18 @@ func (kv *KVServer) updateDB() {
 			return
 		case command = <-kv.applyCh:
 		}
+		if !command.CommandValid {
+			kv.mu.Lock()
+			kv.readPersist(kv.persister.ReadSnapshot())
+			kv.mu.Unlock()
+			continue
+		}
 		_, isLeader := kv.rf.GetState()
 		if isLeader {
 			DPrintf("updateDB %v", command.Command)
 		}
 		msg := command.Command.(ServerOp)
+		commandIndex := command.CommandIndex
 		kv.mu.Lock()
 		toUpdate := true
 		if v, ok := kv.lastApplied[msg.ClientId]; ok {
@@ -281,12 +293,57 @@ func (kv *KVServer) updateDB() {
 		if toUpdate {
 			kv.lastApplied[msg.ClientId] = msg.RequestId
 		}
-		kv.mu.Unlock()
+		kv.tryToSaveSnapShot(commandIndex)
 		if isLeader {
 			if _, ok := kv.repsCh[msg.RequestId]; ok {
 				kv.repsCh[msg.RequestId] <- reply
 				DPrintf("reqId %v DB %v", msg.RequestId, kv.db)
 			}
 		}
+		kv.mu.Unlock()
 	}
+}
+
+func (kv *KVServer) tryToSaveSnapShot(logIndex int) {
+	if kv.maxraftstate == -1 {
+		return
+	}
+	if kv.persister.RaftStateSize() < kv.maxraftstate {
+		return
+	}
+	DPrintf("sr %v genSnapShot", kv.me)
+	data := kv.genSnapShotData()
+	kv.rf.SavePersistAndSnapshot(logIndex, data)
+}
+
+func (kv *KVServer) genSnapShotData() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	if err := e.Encode(kv.db); err != nil {
+		panic(err)
+	}
+	if err := e.Encode(kv.lastApplied); err != nil {
+		panic(err)
+	}
+	data := w.Bytes()
+	return data
+}
+
+func (kv *KVServer) readPersist(data []byte) {
+	// log.Printf("data %v", data)
+	if data == nil || len(data) < 1 { // bootstrap without any state?
+		return
+	}
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var kvDB map[string]string
+	var lastApplied map[int64]int64
+	if d.Decode(&kvDB) != nil {
+		log.Fatalf("Read currentTerm error")
+	}
+	if d.Decode(&lastApplied) != nil {
+		log.Fatalf("Read votedFor error")
+	}
+	kv.db = kvDB
+	kv.lastApplied = lastApplied
 }

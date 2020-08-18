@@ -107,6 +107,9 @@ type Raft struct {
 	stopChUpdateFollowers chan int
 	stopChCommitUpdate    chan int
 	stopChApplyStartCh    chan int
+
+	lastIncludedIndex int
+	lastIncludedTerm  int
 }
 
 // return currentTerm and whether this server
@@ -129,14 +132,20 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
+	data := rf.getRaftState()
+	rf.persister.SaveRaftState(data)
+	// rf.DPrintf("dump sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+}
+
+func (rf *Raft) getRaftState() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
+	e.Encode(rf.lastIncludedIndex)
+	e.Encode(rf.lastIncludedTerm)
 	e.Encode(rf.log)
-	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
-	rf.DPrintf("dump sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	return w.Bytes()
 }
 
 //
@@ -153,6 +162,7 @@ func (rf *Raft) readPersist(data []byte) {
 	d := labgob.NewDecoder(r)
 	var currentTerm int
 	var votedFor int
+	var lastIncludedIndex, lastIncludedTerm int
 	var logs []LogEntry
 	if d.Decode(&currentTerm) != nil {
 		log.Fatalf("Read currentTerm error")
@@ -160,13 +170,21 @@ func (rf *Raft) readPersist(data []byte) {
 	if d.Decode(&votedFor) != nil {
 		log.Fatalf("Read votedFor error")
 	}
+	if d.Decode(&lastIncludedIndex) != nil {
+		log.Fatalf("Read votedFor error")
+	}
+	if d.Decode(&lastIncludedTerm) != nil {
+		log.Fatalf("Read votedFor error")
+	}
 	if d.Decode(&logs) != nil {
 		log.Fatalf("Read logs error")
 	}
 	rf.currentTerm = currentTerm
 	rf.votedFor = votedFor
+	rf.lastIncludedIndex = lastIncludedIndex
+	rf.lastIncludedTerm = lastIncludedTerm
 	rf.log = logs
-	rf.DPrintf("load sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	// rf.DPrintf("load sr %v term %v votedFor %v log %v", rf.me, rf.currentTerm, rf.votedFor, rf.log)
 }
 
 //
@@ -270,7 +288,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.applyCh = applyCh
-	rf.debug = false
+	rf.debug = true
 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.state = -1
@@ -306,7 +324,7 @@ func (rf *Raft) changeRole(role ServerState, term int) {
 		<-rf.changeRoleCh
 		return
 	}
-	rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
+	// rf.DPrintf("sr %v change role from %v to %v", rf.me, preRole, role)
 	switch role {
 	case follower:
 		switch preRole {
@@ -382,7 +400,7 @@ func (rf *Raft) getLastLogIndex() int {
 	if len(rf.log) == 0 {
 		return 0
 	}
-	return len(rf.log) - 1
+	return len(rf.log) - 1 + rf.lastIncludedIndex
 }
 
 func (rf *Raft) getLastLogTerm() int {
@@ -399,13 +417,26 @@ func (rf *Raft) checkApplied() {
 			return
 		case <-rf.checkAppliedCh:
 			for rf.commitIndex > rf.lastApplied {
+				rf.lock("checkApplied")
 				rf.lastApplied++
+				if rf.lastApplied <= rf.lastIncludedIndex {
+					rf.lastApplied = rf.lastIncludedIndex
+					applyMsg := ApplyMsg{
+						Command:      "InstallSnapshot",
+						CommandValid: false,
+						CommandIndex: rf.lastIncludedIndex,
+					}
+					rf.unlock("checkApplied")
+					rf.applyCh <- applyMsg
+					continue
+				}
 				appliedLog := rf.getLogByIndex(rf.lastApplied)
 				applyMsg := ApplyMsg{
 					Command:      appliedLog.Command,
 					CommandIndex: rf.lastApplied,
 					CommandValid: true,
 				}
+				rf.unlock("checkApplied")
 				rf.applyCh <- applyMsg
 			}
 		}
@@ -413,8 +444,10 @@ func (rf *Raft) checkApplied() {
 }
 
 func (rf *Raft) convertIndex(i int) int {
+	// rf.DPrintf("convertIndex %v-%v", i, rf.lastIncludedIndex)
 	if i >= 0 {
-		return i
+		ii := i - rf.lastIncludedIndex
+		return ii
 	}
 	return len(rf.log) + i
 }
